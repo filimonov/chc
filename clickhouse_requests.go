@@ -267,7 +267,7 @@ func query_to_stdout2(query string, stdOut, stdErr io.Writer) {
 				TotalRows uint64 `json:"total_rows,string"`
 			}
 
-			progress_data_json := strings.TrimSpace(message[22:len(message)])
+			progress_data_json := strings.TrimSpace(message[22:])
 			var pd ProgressData
 			err := json.Unmarshal([]byte(progress_data_json), &pd)
 			if err != nil {
