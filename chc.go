@@ -51,25 +51,25 @@ var opts struct {
 	Echo       bool   `long:"echo"                                      description:"in batch mode, print query before execution"`
 }
 
-const VERSION_STRING = "v0.1.0"
+const versionString = "v0.1.0"
 
-func parse_args() {
-	args_parser := flags.NewNamedParser("chc (ClickHouse CLI portable)", flags.Default&^flags.HelpFlag) // , HelpFlag
-	args_parser.ShortDescription = "Unofficial portable ClickHouse CLI"
-	args_parser.LongDescription = "works with ClickHouse from MacOS/Windows/Linux without extra dependencies"
-	args_parser.AddGroup("Main Options", "Main Options", &opts)
-	_, err := args_parser.Parse()
+func parseArgs() {
+	argsParser := flags.NewNamedParser("chc (ClickHouse CLI portable)", flags.Default&^flags.HelpFlag) // , HelpFlag
+	argsParser.ShortDescription = "Unofficial portable ClickHouse CLI"
+	argsParser.LongDescription = "works with ClickHouse from MacOS/Windows/Linux without extra dependencies"
+	argsParser.AddGroup("Main Options", "Main Options", &opts)
+	_, err := argsParser.Parse()
 	if err != nil {
 		panic(err)
 	}
 
 	if opts.Help {
-		args_parser.WriteHelp(os.Stdout)
+		argsParser.WriteHelp(os.Stdout)
 		os.Exit(1)
 	}
 
 	if opts.Version {
-		println("chc " + VERSION_STRING)
+		println("chc " + versionString)
 		os.Exit(1)
 	}
 
@@ -89,18 +89,18 @@ func parse_args() {
 
 func main() {
 
-	parse_args()
+	parseArgs()
 
-	fmt.Printf("chc (ClickHouse CLI portable) %s\n", VERSION_STRING)
-	fmt.Printf("Connecting to database %s at %s as user %s.\n", opts.Database, get_host(), opts.User)
+	fmt.Printf("chc (ClickHouse CLI portable) %s\n", versionString)
+	fmt.Printf("Connecting to database %s at %s as user %s.\n", opts.Database, getHost(), opts.User)
 
-	server_version, err := get_server_version()
+	serverVersion, err := getServerVersion()
 	if err != nil {
 		log.Fatalln(err)
 	}
 
-	fmt.Printf("Connected to ClickHouse server version %s.\n\n", server_version)
+	fmt.Printf("Connected to ClickHouse server version %s.\n\n", serverVersion)
 
-	prompt_loop()
+	promptLoop()
 
 }

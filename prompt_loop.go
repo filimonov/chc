@@ -11,14 +11,14 @@ import (
 	"strings"
 )
 
-var prompt string = ":) "
-var promptNextLines string = ":-] "
+var prompt = ":) "
+var promptNextLines = ":-] "
 
-var exit_regexp *regexp.Regexp = regexp.MustCompile("^(?i)\\s*((exit|quit|logout)\\s*;?|(учше|йгше|дщпщге)\\s*ж?|q|й|:q|Жй)\\s*$")
-var cmd_finish *regexp.Regexp = regexp.MustCompile("(^.*)(;|\\\\\\S)\\s*$")
-var help_cmd *regexp.Regexp = regexp.MustCompile("^(?i)\\s*(help|\\?)\\s*;?\\s*$")
-var use_cmd *regexp.Regexp = regexp.MustCompile("^(?i)\\s*(use)\\s*(\"\\w+\"|\\w+|`\\w+`)\\s*;?\\s*$")
-var history_fn string = filepath.Join(homedir(), ".clickhouse_history")
+var exitRegexp = regexp.MustCompile("^(?i)\\s*((exit|quit|logout)\\s*;?|(учше|йгше|дщпщге)\\s*ж?|q|й|:q|Жй)\\s*$")
+var cmdFinish = regexp.MustCompile("(^.*)(;|\\\\\\S)\\s*$")
+var helpCmd = regexp.MustCompile("^(?i)\\s*(help|\\?)\\s*;?\\s*$")
+var useCmd = regexp.MustCompile("^(?i)\\s*(use)\\s*(\"\\w+\"|\\w+|`\\w+`)\\s*;?\\s*$")
+var historyFn = filepath.Join(homedir(), ".clickhouse_history")
 
 func homedir() string {
 	home := os.Getenv("HOME") // *nix style
@@ -42,18 +42,18 @@ func homedir() string {
 	return os.Getenv("TEMP") // may be at least temp exists?
 }
 
-func prompt_loop() {
-	liner_ctrl := liner.NewLiner()
-	defer liner_ctrl.Close()
+func promptLoop() {
+	linerCtrl := liner.NewLiner()
+	defer linerCtrl.Close()
 
-	init_autocomplete()
+	initAutocomlete()
 
-	liner_ctrl.SetMultiLineMode(true)
-	liner_ctrl.SetCtrlCAborts(true)
-	liner_ctrl.SetCompleter(clickhouse_comleter)
+	linerCtrl.SetMultiLineMode(true)
+	linerCtrl.SetCtrlCAborts(true)
+	linerCtrl.SetCompleter(clickhouseComleter)
 
-	if f, err := os.Open(history_fn); err == nil {
-		liner_ctrl.ReadHistory(f)
+	if f, err := os.Open(historyFn); err == nil {
+		linerCtrl.ReadHistory(f)
 		f.Close()
 	}
 
@@ -61,12 +61,12 @@ func prompt_loop() {
 
 	signalCh := make(chan os.Signal, 1)
 	signal.Notify(signalCh, os.Interrupt)
-	//	set_pager("more")
+	//	setPager("more")
 
-	current_prompt := prompt
-prompt_loop:
+	currentPrompt := prompt
+promptLoop:
 	for {
-		line, err := liner_ctrl.Prompt(current_prompt)
+		line, err := linerCtrl.Prompt(currentPrompt)
 		if err != nil {
 			break
 		}
@@ -74,66 +74,66 @@ prompt_loop:
 		if len(line) == 0 {
 			continue
 		}
-		if exit_regexp.MatchString(line) {
+		if exitRegexp.MatchString(line) {
 			break
 		}
 
-		if help_cmd.MatchString(line) {
-			print_help()
-			continue prompt_loop
+		if helpCmd.MatchString(line) {
+			printHelp()
+			continue promptLoop
 		}
 
-		matches := use_cmd.FindStringSubmatch(line)
+		matches := useCmd.FindStringSubmatch(line)
 
-		sql_to_exequte := ""
-		new_db_name := ""
+		sqlToExequte := ""
+		newDbName := ""
 
 		if matches != nil {
-			new_db_name = strings.Trim(matches[2], "\"`")
-			sql_to_exequte = line
+			newDbName = strings.Trim(matches[2], "\"`")
+			sqlToExequte = line
 		}
 
-		if len(sql_to_exequte) > 0 {
+		if len(sqlToExequte) > 0 {
 			cmds = append(cmds, line)
 		} else {
-			matches := cmd_finish.FindStringSubmatch(line)
+			matches := cmdFinish.FindStringSubmatch(line)
 
 			if matches == nil {
 				cmds = append(cmds, line)
-				current_prompt = promptNextLines
+				currentPrompt = promptNextLines
 				continue
 			} else {
 				cmds = append(cmds, matches[1])
-				suffix_cmd := matches[2]
-				switch suffix_cmd {
+				suffixCmd := matches[2]
+				switch suffixCmd {
 				case "\\q":
-					break prompt_loop
+					break promptLoop
 				case "\\Q":
-					break prompt_loop
+					break promptLoop
 				case "\\й":
-					break prompt_loop
+					break promptLoop
 				case "\\Й":
-					break prompt_loop
+					break promptLoop
 				case "\\?":
-					print_help()
-					continue prompt_loop
+					printHelp()
+					continue promptLoop
 				case "\\h":
-					print_help()
-					continue prompt_loop
+					printHelp()
+					continue promptLoop
 				case "\\#":
-					init_autocomplete()
+					initAutocomlete()
 					println("autocomplete keywords reloaded")
-					continue prompt_loop
+					continue promptLoop
 				case "\\c":
-					sql_to_exequte = ""
+					sqlToExequte = ""
 				case ";":
-					sql_to_exequte = strings.Join(cmds, " ")
+					sqlToExequte = strings.Join(cmds, " ")
 				case "\\g":
-					sql_to_exequte = strings.Join(cmds, " ")
+					sqlToExequte = strings.Join(cmds, " ")
 				case "\\G":
-					sql_to_exequte = strings.Join(cmds, " ") + " FORMAT Vertical"
+					sqlToExequte = strings.Join(cmds, " ") + " FORMAT Vertical"
 				case "\\s":
-					sql_to_exequte = `SELECT * FROM (
+					sqlToExequte = `SELECT * FROM (
 													SELECT name, value FROM system.build_options WHERE name in ('VERSION_FULL', 'VERSION_DESCRIBE', 'SYSTEM')
 													UNION ALL
 													SELECT 'currentDatabase', currentDatabase()
@@ -142,66 +142,66 @@ prompt_loop:
 													UNION ALL
 													SELECT 'uptime', toString(uptime())) ORDER BY name`
 				case "\\l":
-					sql_to_exequte = "SHOW DATABASES"
+					sqlToExequte = "SHOW DATABASES"
 				case "\\d":
-					sql_to_exequte = "SHOW TABLES"
+					sqlToExequte = "SHOW TABLES"
 				case "\\p":
-					sql_to_exequte = "SELECT query_id, user, address, elapsed, read_rows, memory_usage FROM system.processes"
+					sqlToExequte = "SELECT queryID, user, address, elapsed, read_rows, memory_usage FROM system.processes"
 				default:
-					println("Ignoring unknown command " + suffix_cmd)
-					continue prompt_loop
+					println("Ignoring unknown command " + suffixCmd)
+					continue promptLoop
 				}
-				cmds[len(cmds)-1] += suffix_cmd
+				cmds[len(cmds)-1] += suffixCmd
 			}
 		}
 
 		sql := strings.Join(cmds, " ")
 		cmds = cmds[:0]
 
-		current_prompt = prompt
+		currentPrompt = prompt
 
-		liner_ctrl.AppendHistory(sql)
+		linerCtrl.AppendHistory(sql)
 
-		if f, err := os.Create(history_fn); err != nil {
+		if f, err := os.Create(historyFn); err != nil {
 			log.Print("Error writing history file: ", err)
 		} else {
-			liner_ctrl.WriteHistory(f)
+			linerCtrl.WriteHistory(f)
 			f.Close()
 		}
 
-		if len(sql_to_exequte) > 0 {
+		if len(sqlToExequte) > 0 {
 			//
 			cx, cancel := context.WithCancel(context.Background())
-			query_finished := make(chan bool)
+			queryFinished := make(chan bool)
 			go func() {
 				for {
 					select {
 					case <-signalCh:
 						cancel()
-					case <-query_finished:
+					case <-queryFinished:
 						return
 					}
 				}
 			}()
 
-			setup_output()
-			res := query_to_stdout(sql_to_exequte, stdOut, stdErr, cx)
-			release_output()
-			if len(new_db_name) > 0 && res == 200 {
-				opts.Database = new_db_name
+			setupOutput()
+			res := queryToStdout(cx, sqlToExequte, stdOut, stdErr)
+			releaseOutput()
+			if len(newDbName) > 0 && res == 200 {
+				opts.Database = newDbName
 			}
-			query_finished <- true
+			queryFinished <- true
 			if err != nil {
 				log.Fatal("Unable to start PAGER: ", err)
 			}
 		}
 
-		//query_to_stdout2(cmd, stdOut, stdErr)
+		//queryToStdout2(cmd, stdOut, stdErr)
 	}
 
 }
 
-func print_help() {
+func printHelp() {
 	println(`
 Hotkeys:
 Ctrl-A, Home      Move cursor to beginning of line

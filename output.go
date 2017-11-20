@@ -8,68 +8,68 @@ import (
 	"strings"
 )
 
-var colorableStdout io.Writer = colorable.NewColorableStdout() // os.Stdout
-var colorableStderr io.Writer = colorable.NewColorableStderr() // os.Stderr
+var colorableStdout = colorable.NewColorableStdout() // os.Stdout
+var colorableStderr = colorable.NewColorableStderr() // os.Stderr
 
-var stdOut io.Writer = colorableStdout
-var stdErr io.Writer = colorableStderr
+var stdOut = colorableStdout
+var stdErr = colorableStderr
 
-var PagerWriter io.WriteCloser
+var pagerWriter io.WriteCloser
 
-var pager_executable string
-var pager_params []string
+var pagerExecutable string
+var pagerParams []string
 
-var waiting_pager chan struct{}
+var waitingPager chan struct{}
 
-func set_pager(cmd string) {
+func setPager(cmd string) {
 	parts := strings.Split(cmd, " ")
-	pager_executable, pager_params = parts[0], parts[1:]
+	pagerExecutable, pagerParams = parts[0], parts[1:]
 }
 
-func set_nopager() {
-	pager_executable = ""
-	pager_params = []string{}
+func setNoPager() {
+	pagerExecutable = ""
+	pagerParams = []string{}
 }
 
-func use_std_output() {
+func useStdOutput() {
 	stdOut = colorableStdout
 	stdErr = colorableStderr
 }
 
-func setup_output() {
-	if len(pager_executable) > 0 {
+func setupOutput() {
+	if len(pagerExecutable) > 0 {
 		//			cmd := exec.Command("less", "-R -S")
-		cmd := exec.Command(pager_executable, pager_params...)
+		cmd := exec.Command(pagerExecutable, pagerParams...)
 		// create a pipe (blocking)
 		//r, stdin := io.Pipe()
 		// Set your i/o's
-		PagerWriter, _ = cmd.StdinPipe()
-		stdOut = PagerWriter
+		pagerWriter, _ = cmd.StdinPipe()
+		stdOut = pagerWriter
 		//cmd.Stdin = r
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 
 		// Create a blocking chan, Run the pager and unblock once it is finished
-		waiting_pager = make(chan struct{})
+		waitingPager = make(chan struct{})
 		go func() {
-			defer close(waiting_pager)
+			defer close(waitingPager)
 			cmd.Run()
 		}()
 	} else {
-		use_std_output()
+		useStdOutput()
 	}
 }
 
-func release_output() {
-	if len(pager_executable) > 0 {
+func releaseOutput() {
+	if len(pagerExecutable) > 0 {
 		// Pass anything to your pipe
 		//  fmt.Fprintf(stdin, "hello world\n")
 
 		// Close stdin (result in pager to exit)
-		PagerWriter.Close()
+		pagerWriter.Close()
 
 		// Wait for the pager to be finished
-		<-waiting_pager
+		<-waitingPager
 
 		// lessCmd := exec.Command("/usr/bin/vim","-")
 		// lessIn, _ := lessCmd.StdinPipe()
@@ -81,5 +81,5 @@ func release_output() {
 
 		// lessCmd.Wait();
 	}
-	use_std_output()
+	useStdOutput()
 }

@@ -7,7 +7,7 @@ import (
 	"errors"
 	"fmt"
 	//	"github.com/davecgh/go-spew/spew"
-	"github.com/satori/go.uuid" // generate session_id and query_id
+	"github.com/satori/go.uuid" // generate sessionID and queryID
 	"io"
 	// "io/ioutil"
 	"log"
@@ -21,9 +21,9 @@ import (
 	"time"
 )
 
-var session_id string = uuid.NewV4().String()
+var sessionID string = uuid.NewV4().String()
 
-type ProgressInfo struct {
+type progressInfo struct {
 	Elapsed         float64
 	ReadRows        uint64
 	ReadBytes       uint64
@@ -33,7 +33,7 @@ type ProgressInfo struct {
 	MemoryUsage     int64
 }
 
-type QueryStats struct {
+type queryStats struct {
 	QueryDurationMs uint64
 	ReadRows        uint64
 	ReadBytes       uint64
@@ -46,8 +46,8 @@ type QueryStats struct {
 	StackTrace      string
 }
 
-func get_server_version() (version string, err error) {
-	data, err := service_request("SELECT version()")
+func getServerVersion() (version string, err error) {
+	data, err := serviceRequest("SELECT version()")
 	if err != nil {
 		return
 	}
@@ -55,11 +55,11 @@ func get_server_version() (version string, err error) {
 	return
 }
 
-func get_progress_info(query_id string) (pi ProgressInfo, err error) {
-	pi = ProgressInfo{}
-	query := fmt.Sprintf("select elapsed,read_rows,read_bytes,total_rows_approx,written_rows,written_bytes,memory_usage from system.processes where query_id='%s'", query_id)
+func getProgressInfo(queryID string) (pi progressInfo, err error) {
+	pi = progressInfo{}
+	query := fmt.Sprintf("select elapsed,read_rows,read_bytes,totalRows_approx,written_rows,written_bytes,memory_usage from system.processes where queryID='%s'", queryID)
 
-	data, err := service_request(query)
+	data, err := serviceRequest(query)
 
 	if err != nil {
 		return
@@ -80,11 +80,11 @@ func get_progress_info(query_id string) (pi ProgressInfo, err error) {
 	return
 }
 
-func get_query_stats(query_id string) (qs QueryStats, err error) {
+func getQueryStats(queryID string) (qs queryStats, err error) {
 
-	query := fmt.Sprintf("select query_duration_ms,read_rows,read_bytes,written_rows,written_bytes,result_rows,result_bytes,memory_usage,exception,stack_trace,type from system.query_log where query_id='%s' and type>1", query_id)
+	query := fmt.Sprintf("select query_duration_ms,read_rows,read_bytes,written_rows,written_bytes,result_rows,result_bytes,memory_usage,exception,stack_trace,type from system.query_log where queryID='%s' and type>1", queryID)
 
-	data, err := service_request(query)
+	data, err := serviceRequest(query)
 
 	if err != nil {
 		return
@@ -107,21 +107,21 @@ func get_query_stats(query_id string) (qs QueryStats, err error) {
 	return
 }
 
-func query_to_stdout(query string, stdOut, stdErr io.Writer, cx context.Context) int {
+func queryToStdout(cx context.Context, query string, stdOut, stdErr io.Writer) int {
 
-	query_id := uuid.NewV4().String()
+	queryID := uuid.NewV4().String()
 	status := -1
 
-	error_channel := make(chan error)
-	data_channel := make(chan string)
-	done_channel := make(chan bool)
-	statuscode_channel := make(chan int)
-	progress_channel := make(chan ProgressInfo)
+	errorChannel := make(chan error)
+	dataChannel := make(chan string)
+	doneChannel := make(chan bool)
+	statusCodeChannel := make(chan int)
+	progressChannel := make(chan progressInfo)
 
 	initProgress()
 
 	start := time.Now()
-	finish_ticker_channel := make(chan bool, 3)
+	finishTickerChannel := make(chan bool, 3)
 
 	go func() {
 
@@ -131,11 +131,11 @@ func query_to_stdout(query string, stdOut, stdErr io.Writer, cx context.Context)
 		for {
 			select {
 			case <-ticker.C:
-				pi, err := get_progress_info(query_id)
+				pi, err := getProgressInfo(queryID)
 				if err == nil {
-					progress_channel <- pi
+					progressChannel <- pi
 				}
-			case <-finish_ticker_channel:
+			case <-finishTickerChannel:
 				break Loop3
 			}
 		}
@@ -145,8 +145,8 @@ func query_to_stdout(query string, stdOut, stdErr io.Writer, cx context.Context)
 	}()
 
 	go func() {
-		extra_settings := map[string]string{"log_queries": "1", "query_id": query_id, "session_id": session_id}
-		req := prepare_request(query, opts.Format, extra_settings).WithContext(cx)
+		extraSettings := map[string]string{"log_queries": "1", "queryID": queryID, "sessionID": sessionID}
+		req := prepareRequest(query, opts.Format, extraSettings).WithContext(cx)
 
 		response, err := http.DefaultClient.Do(req)
 		select {
@@ -154,11 +154,11 @@ func query_to_stdout(query string, stdOut, stdErr io.Writer, cx context.Context)
 			// Already timedout
 		default:
 			if err != nil {
-				error_channel <- err
+				errorChannel <- err
 			} else {
 				defer response.Body.Close()
 
-				statuscode_channel <- response.StatusCode
+				statusCodeChannel <- response.StatusCode
 				reader := bufio.NewReader(response.Body)
 			Loop:
 				for {
@@ -171,12 +171,12 @@ func query_to_stdout(query string, stdOut, stdErr io.Writer, cx context.Context)
 						//spew.Dump(err)
 						//spew.Dump(msg)
 						if err == io.EOF {
-							done_channel <- true
+							doneChannel <- true
 							break Loop
 						} else if err == nil {
-							data_channel <- msg
+							dataChannel <- msg
 						} else {
-							error_channel <- err
+							errorChannel <- err
 							break Loop
 						}
 					}
@@ -189,49 +189,49 @@ func query_to_stdout(query string, stdOut, stdErr io.Writer, cx context.Context)
 Loop2:
 	for {
 		select {
-		case st := <-statuscode_channel:
+		case st := <-statusCodeChannel:
 			status = st
 		case <-cx.Done():
-			finish_ticker_channel <- true // aware deadlocks here, we uses buffered channel here
+			finishTickerChannel <- true // aware deadlocks here, we uses buffered channel here
 			clearProgress(stdErr)
-			io.WriteString(stdErr, fmt.Sprintf("\nKilling query (id: %v)... ", query_id))
-			if kill_query(query_id) {
+			io.WriteString(stdErr, fmt.Sprintf("\nKilling query (id: %v)... ", queryID))
+			if killQuery(queryID) {
 				io.WriteString(stdErr, "killed!\n\n")
 			} else {
 				io.WriteString(stdErr, "failure!\n\n")
 			}
 			break Loop2
-		case err := <-error_channel:
+		case err := <-errorChannel:
 			log.Fatalln(err)
-		case pi := <-progress_channel:
+		case pi := <-progressChannel:
 			writeProgres(stdErr, pi.ReadRows, pi.ReadBytes, pi.TotalRowsApprox, uint64(pi.Elapsed*1000000000))
-		case <-done_channel:
-			finish_ticker_channel <- true // aware deadlocks here, we uses buffered channel here
+		case <-doneChannel:
+			finishTickerChannel <- true // aware deadlocks here, we uses buffered channel here
 			clearProgress(stdErr)
 			io.WriteString(stdErr, fmt.Sprintf("\nElapsed: %v\n\n", time.Since(start)))
 			break Loop2
-		case data := <-data_channel:
+		case data := <-dataChannel:
 			clearProgress(stdErr)
 			io.WriteString(stdOut, data)
 		}
 	}
 	return status
-	// io.WriteString(stdErr, "query_to_stdout finished" );
+	// io.WriteString(stdErr, "queryToStdout finished" );
 }
 
-func query_to_stdout2(query string, stdOut, stdErr io.Writer) {
-	stdOut_buffered := bufio.NewWriter(stdOut)
-	stdErr_buffered := bufio.NewWriter(stdErr)
+func queryToStdout2(query string, stdOut, stdErr io.Writer) {
+	stdOutBuffered := bufio.NewWriter(stdOut)
+	stdErrBuffered := bufio.NewWriter(stdErr)
 
-	extra_settings := map[string]string{"send_progress_in_http_headers": "1"}
+	extraSettings := map[string]string{"send_progress_in_http_headers": "1"}
 
-	req := prepare_request(query, opts.Format, extra_settings)
+	req := prepareRequest(query, opts.Format, extraSettings)
 
 	initProgress()
 	start := time.Now()
 
 	// connect to this socket
-	conn, err := net.Dial("tcp", get_host())
+	conn, err := net.Dial("tcp", getHost())
 	if err != nil {
 		log.Fatalln(err) // TODO - process that / retry?
 	}
@@ -241,8 +241,8 @@ func query_to_stdout2(query string, stdOut, stdErr io.Writer) {
 		log.Fatalln(err) // TODO - process that / retry?
 	}
 
-	var request_begining bytes.Buffer
-	tee := io.TeeReader(conn, &request_begining)
+	var requestBeginning bytes.Buffer
+	tee := io.TeeReader(conn, &requestBeginning)
 	reader := bufio.NewReader(tee)
 	for {
 		msg, err := reader.ReadString('\n')
@@ -267,35 +267,35 @@ func query_to_stdout2(query string, stdOut, stdErr io.Writer) {
 				TotalRows uint64 `json:"total_rows,string"`
 			}
 
-			progress_data_json := strings.TrimSpace(message[22:])
+			progressDataJSON := strings.TrimSpace(message[22:])
 			var pd ProgressData
-			err := json.Unmarshal([]byte(progress_data_json), &pd)
+			err := json.Unmarshal([]byte(progressDataJSON), &pd)
 			if err != nil {
 				log.Fatal(err)
 			}
 
-			writeProgres(stdErr_buffered, pd.ReadRows, pd.ReadBytes, pd.TotalRows, uint64(time.Since(start)))
-			stdErr_buffered.Flush()
+			writeProgres(stdErrBuffered, pd.ReadRows, pd.ReadBytes, pd.TotalRows, uint64(time.Since(start)))
+			stdErrBuffered.Flush()
 		}
 	}
 
-	reader2 := io.MultiReader(&request_begining, conn)
+	reader2 := io.MultiReader(&requestBeginning, conn)
 	reader3 := bufio.NewReader(reader2)
 	res, err := http.ReadResponse(reader3, req)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	clearProgress(stdErr_buffered)
-	stdErr_buffered.Flush()
+	clearProgress(stdErrBuffered)
+	stdErrBuffered.Flush()
 
 	//fmt.Println(res.StatusCode)
 	//fmt.Println(res.ContentLength)
 	defer res.Body.Close()
-	_, err = io.Copy(stdOut_buffered, res.Body)
+	_, err = io.Copy(stdOutBuffered, res.Body)
 	if err != nil {
 		log.Fatal(err)
 	}
-	stdOut_buffered.Flush()
+	stdOutBuffered.Flush()
 	//  fmt.Println(res.Body.Read())
 }

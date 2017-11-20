@@ -13,42 +13,42 @@ import (
 	"strings"
 )
 
-func get_host() string {
+func getHost() string {
 	return fmt.Sprintf("%s:%d", opts.Host, opts.Port)
 }
 
-func prepare_request_reader(query io.Reader, format string, extra_settings map[string]string) *http.Request {
-	ch_url := url.URL{}
-	ch_url.Scheme = "http"
-	ch_url.Host = get_host()
-	ch_url.Path = "/"
+func prepareRequestReader(query io.Reader, format string, extraSettings map[string]string) *http.Request {
+	chURL := url.URL{}
+	chURL.Scheme = "http"
+	chURL.Host = getHost()
+	chURL.Path = "/"
 
-	qs_params := url.Values{}
-	qs_params.Set("default_format", format)
-	qs_params.Set("database", opts.Database)
+	qsParams := url.Values{}
+	qsParams.Set("default_format", format)
+	qsParams.Set("database", opts.Database)
 
-	for k, v := range extra_settings {
-		qs_params.Set(k, v) // TODO: for readonly mode we can set up only few parameters
+	for k, v := range extraSettings {
+		qsParams.Set(k, v) // TODO: for readonly mode we can set up only few parameters
 	}
 
-	ch_url.RawQuery = qs_params.Encode()
+	chURL.RawQuery = qsParams.Encode()
 
-	req, err := http.NewRequest("POST", ch_url.String(), query)
+	req, err := http.NewRequest("POST", chURL.String(), query)
 	if err != nil {
 		log.Fatalln(err)
 	}
 
-	req.Header.Set("User-Agent", "chc/"+VERSION_STRING)
+	req.Header.Set("User-Agent", "chc/"+versionString)
 	req.SetBasicAuth(opts.User, opts.Password)
 	return req
 }
 
-func prepare_request(query, format string, extra_settings map[string]string) *http.Request {
-	return prepare_request_reader(strings.NewReader(query), format, extra_settings)
+func prepareRequest(query, format string, extraSettings map[string]string) *http.Request {
+	return prepareRequestReader(strings.NewReader(query), format, extraSettings)
 }
 
-func service_request_with_extra_setting(query string, extra_settings map[string]string) (data [][]string, err error) {
-	response, err2 := http.DefaultClient.Do(prepare_request(query, "TSV", extra_settings))
+func serviceRequestWithExtraSetting(query string, extraSettings map[string]string) (data [][]string, err error) {
+	response, err2 := http.DefaultClient.Do(prepareRequest(query, "TSV", extraSettings))
 	if err2 != nil {
 		err = err2
 		return
@@ -66,22 +66,22 @@ func service_request_with_extra_setting(query string, extra_settings map[string]
 		return
 	}
 
-	tsv_reader := csv.NewReader(response.Body)
-	tsv_reader.Comma = '\t'
-	data, err = tsv_reader.ReadAll()
+	tsvReader := csv.NewReader(response.Body)
+	tsvReader.Comma = '\t'
+	data, err = tsvReader.ReadAll()
 	return
 }
 
-func service_request(query string) (data [][]string, err error) {
-	extra_settings := map[string]string{"log_queries": "0"}
-	return service_request_with_extra_setting(query, extra_settings)
+func serviceRequest(query string) (data [][]string, err error) {
+	extraSettings := map[string]string{"log_queries": "0"}
+	return serviceRequestWithExtraSetting(query, extraSettings)
 }
 
-func kill_query(query_id string) bool {
-	query := fmt.Sprintf("SELECT 'query_id %s killed by replace'", query_id)
-	extra_settings := map[string]string{"log_queries": "0", "replace_running_query": "1", "query_id": query_id}
+func killQuery(queryID string) bool {
+	query := fmt.Sprintf("SELECT 'queryID %s killed by replace'", queryID)
+	extraSettings := map[string]string{"log_queries": "0", "replace_running_query": "1", "queryID": queryID}
 
-	_, err := service_request_with_extra_setting(query, extra_settings)
+	_, err := serviceRequestWithExtraSetting(query, extraSettings)
 	if err != nil {
 		return false
 	}

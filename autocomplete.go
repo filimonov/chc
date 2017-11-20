@@ -7,9 +7,9 @@ import (
 	"strings"
 )
 
-var keywords_autocomlete []string
+var keywordsAutocomlete []string
 
-func init_autocomplete() {
+func initAutocomlete() {
 	keywords := []string{
 		"ADD COLUMN",
 		"AFTER",
@@ -209,9 +209,9 @@ func init_autocomplete() {
 		SELECT name FROM system.settings
 	) ORDER BY name`
 
-	data, err := service_request(query)
+	data, err := serviceRequest(query)
 	if err != nil {
-		keywords_autocomlete = keywords
+		keywordsAutocomlete = keywords
 		log.Println(err)
 	}
 
@@ -219,23 +219,23 @@ func init_autocomplete() {
 		keywords = append(keywords, element[0])
 	}
 
-	keywords_autocomlete = keywords
-	//	spew.Dump(keywords_autocomlete)
+	keywordsAutocomlete = keywords
+	//	spew.Dump(keywordsAutocomlete)
 }
 
-var last_word_regexp *regexp.Regexp = regexp.MustCompile("(^.*)\\b(\\w+)$")
+var lastWordRegexp = regexp.MustCompile("(^.*)\\b(\\w+)$")
 
-func clickhouse_comleter(line string) (c []string) {
-	matches := last_word_regexp.FindStringSubmatch(line)
+func clickhouseComleter(line string) (c []string) {
+	matches := lastWordRegexp.FindStringSubmatch(line)
 	if len(matches) == 3 {
-		last_word := matches[2]
+		lastWord := matches[2]
 		prefix := matches[1]
-		for _, n := range keywords_autocomlete {
+		for _, n := range keywordsAutocomlete {
 			// possible improvements:
 			//  sort keywords by popularity
 			//  make it context aware (?)
 			//  use more effective search (like binary tree) than simple iterations through all the keywords
-			if strings.HasPrefix(strings.ToLower(n), strings.ToLower(last_word)) {
+			if strings.HasPrefix(strings.ToLower(n), strings.ToLower(lastWord)) {
 				c = append(c, prefix+n)
 			}
 		}
