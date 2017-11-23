@@ -2,6 +2,8 @@ package main
 
 import (
 	"github.com/mattn/go-colorable" // make colors work on windows
+	"log"
+
 	"io"
 	"os"
 	"os/exec"
@@ -24,6 +26,10 @@ var waitingPager chan struct{}
 func setPager(cmd string) {
 	parts := strings.Split(cmd, " ")
 	pagerExecutable, pagerParams = parts[0], parts[1:]
+}
+
+func setOutfile(filename string) {
+	println("TODO - setOutfile:" + filename)
 }
 
 func setNoPager() {
@@ -53,7 +59,11 @@ func setupOutput() {
 		waitingPager = make(chan struct{})
 		go func() {
 			defer close(waitingPager)
-			cmd.Run()
+			err := cmd.Run()
+			if err != nil {
+				log.Fatal("Unable to start PAGER: ", err)
+				useStdOutput()
+			}
 		}()
 	} else {
 		useStdOutput()

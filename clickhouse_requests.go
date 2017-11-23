@@ -57,14 +57,16 @@ func getServerVersion() (version string, err error) {
 
 func getProgressInfo(queryID string) (pi progressInfo, err error) {
 	pi = progressInfo{}
-	query := fmt.Sprintf("select elapsed,read_rows,read_bytes,totalRows_approx,written_rows,written_bytes,memory_usage from system.processes where queryID='%s'", queryID)
-
+	query := fmt.Sprintf("select elapsed,read_rows,read_bytes,total_rows_approx,written_rows,written_bytes,memory_usage from system.processes where query_id='%s'", queryID)
+	//println(query)
 	data, err := serviceRequest(query)
 
 	if err != nil {
+		//	println("1?")
 		return
 	}
 	if len(data) != 1 || len(data[0]) != 7 {
+		//	println("2?")
 		err = errors.New("Bad response dimensions")
 		return
 	}
@@ -76,13 +78,13 @@ func getProgressInfo(queryID string) (pi progressInfo, err error) {
 	pi.WrittenRows, _ = strconv.ParseUint(data[0][4], 10, 64)
 	pi.WrittenBytes, _ = strconv.ParseUint(data[0][5], 10, 64)
 	pi.MemoryUsage, _ = strconv.ParseInt(data[0][6], 10, 64)
-	//spew.Dump(pi)
+	//	spew.Dump(pi)
 	return
 }
 
 func getQueryStats(queryID string) (qs queryStats, err error) {
 
-	query := fmt.Sprintf("select query_duration_ms,read_rows,read_bytes,written_rows,written_bytes,result_rows,result_bytes,memory_usage,exception,stack_trace,type from system.query_log where queryID='%s' and type>1", queryID)
+	query := fmt.Sprintf("select query_duration_ms,read_rows,read_bytes,written_rows,written_bytes,result_rows,result_bytes,memory_usage,exception,stack_trace,type from system.query_log where query_id='%s' and type>1", queryID)
 
 	data, err := serviceRequest(query)
 
@@ -107,7 +109,7 @@ func getQueryStats(queryID string) (qs queryStats, err error) {
 	return
 }
 
-func queryToStdout(cx context.Context, query string, stdOut, stdErr io.Writer) int {
+func queryToStdout(cx context.Context, query, format string) int {
 
 	queryID := uuid.NewV4().String()
 	status := -1
@@ -145,8 +147,14 @@ func queryToStdout(cx context.Context, query string, stdOut, stdErr io.Writer) i
 	}()
 
 	go func() {
-		extraSettings := map[string]string{"log_queries": "1", "queryID": queryID, "sessionID": sessionID}
-		req := prepareRequest(query, opts.Format, extraSettings).WithContext(cx)
+		extraSettings := map[string]string{"log_queries": "1", "query_id": queryID, "session_id": sessionID}
+
+		req, err := prepareRequest(query, format, extraSettings)
+		if err != nil {
+			errorChannel <- err
+			return
+		}
+		req = req.WithContext(cx)
 
 		response, err := http.DefaultClient.Do(req)
 		select {
@@ -225,7 +233,7 @@ func queryToStdout2(query string, stdOut, stdErr io.Writer) {
 
 	extraSettings := map[string]string{"send_progress_in_http_headers": "1"}
 
-	req := prepareRequest(query, opts.Format, extraSettings)
+	req, _ := prepareRequest(query, opts.Format, extraSettings)
 
 	initProgress()
 	start := time.Now()

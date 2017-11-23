@@ -18,7 +18,6 @@ package main
 
 // TODO:  promptForPassword , password from env
 // TTY, configs
-// replace regexps with strings.Fields ?
 
 import (
 	"fmt"
@@ -50,6 +49,8 @@ var opts struct {
 	Version    bool   `long:"version"    short:"V"                      description:"print version information and exit"`
 	Echo       bool   `long:"echo"                                      description:"in batch mode, print query before execution"`
 }
+
+var clickhouseSetting = make(map[string]string)
 
 const versionString = "v0.1.0"
 

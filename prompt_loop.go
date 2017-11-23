@@ -2,8 +2,9 @@ package main
 
 import (
 	"context"
+	"github.com/davecgh/go-spew/spew"
 	"github.com/peterh/liner" // there is also github.com/chzyer/readline and https://github.com/Bowery/prompt
-	"log"
+	//"log"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -13,34 +14,7 @@ import (
 
 var prompt = ":) "
 var promptNextLines = ":-] "
-
-var exitRegexp = regexp.MustCompile("^(?i)\\s*((exit|quit|logout)\\s*;?|(учше|йгше|дщпщге)\\s*ж?|q|й|:q|Жй)\\s*$")
-var cmdFinish = regexp.MustCompile("(^.*)(;|\\\\\\S)\\s*$")
-var helpCmd = regexp.MustCompile("^(?i)\\s*(help|\\?)\\s*;?\\s*$")
-var useCmd = regexp.MustCompile("^(?i)\\s*(use)\\s*(\"\\w+\"|\\w+|`\\w+`)\\s*;?\\s*$")
 var historyFn = filepath.Join(homedir(), ".clickhouse_history")
-
-func homedir() string {
-	home := os.Getenv("HOME") // *nix style
-
-	if home != "" {
-		return home
-	}
-
-	home = os.Getenv("HOMEDRIVE") + os.Getenv("HOMEPATH") // Windows style
-
-	if home != "" {
-		return home
-	}
-
-	home = os.Getenv("USERPROFILE") // Windows option 2
-
-	if home != "" {
-		return home
-	}
-
-	return os.Getenv("TEMP") // may be at least temp exists?
-}
 
 func promptLoop() {
 	linerCtrl := liner.NewLiner()
@@ -52,16 +26,9 @@ func promptLoop() {
 	linerCtrl.SetCtrlCAborts(true)
 	linerCtrl.SetCompleter(clickhouseComleter)
 
-	if f, err := os.Open(historyFn); err == nil {
-		linerCtrl.ReadHistory(f)
-		f.Close()
-	}
+	readHistoryFromFile(linerCtrl, historyFn)
 
 	var cmds []string
-
-	signalCh := make(chan os.Signal, 1)
-	signal.Notify(signalCh, os.Interrupt)
-	//	setPager("more")
 
 	currentPrompt := prompt
 promptLoop:
@@ -71,134 +38,212 @@ promptLoop:
 			break
 		}
 		line = strings.TrimSpace(line)
-		if len(line) == 0 {
-			continue
-		}
-		if exitRegexp.MatchString(line) {
-			break
-		}
 
-		if helpCmd.MatchString(line) {
-			printHelp()
-			continue promptLoop
-		}
+		resStatus := executeOrContinue(cmds, line)
 
-		matches := useCmd.FindStringSubmatch(line)
-
-		sqlToExequte := ""
-		newDbName := ""
-
-		if matches != nil {
-			newDbName = strings.Trim(matches[2], "\"`")
-			sqlToExequte = line
-		}
-
-		if len(sqlToExequte) > 0 {
+		switch resStatus {
+		case resExecuted:
 			cmds = append(cmds, line)
-		} else {
-			matches := cmdFinish.FindStringSubmatch(line)
-
-			if matches == nil {
-				cmds = append(cmds, line)
-				currentPrompt = promptNextLines
-				continue
-			} else {
-				cmds = append(cmds, matches[1])
-				suffixCmd := matches[2]
-				switch suffixCmd {
-				case "\\q":
-					break promptLoop
-				case "\\Q":
-					break promptLoop
-				case "\\й":
-					break promptLoop
-				case "\\Й":
-					break promptLoop
-				case "\\?":
-					printHelp()
-					continue promptLoop
-				case "\\h":
-					printHelp()
-					continue promptLoop
-				case "\\#":
-					initAutocomlete()
-					println("autocomplete keywords reloaded")
-					continue promptLoop
-				case "\\c":
-					sqlToExequte = ""
-				case ";":
-					sqlToExequte = strings.Join(cmds, " ")
-				case "\\g":
-					sqlToExequte = strings.Join(cmds, " ")
-				case "\\G":
-					sqlToExequte = strings.Join(cmds, " ") + " FORMAT Vertical"
-				case "\\s":
-					sqlToExequte = `SELECT * FROM (
-													SELECT name, value FROM system.build_options WHERE name in ('VERSION_FULL', 'VERSION_DESCRIBE', 'SYSTEM')
-													UNION ALL
-													SELECT 'currentDatabase', currentDatabase()
-													UNION ALL
-													SELECT 'timezone', timezone()
-													UNION ALL
-													SELECT 'uptime', toString(uptime())) ORDER BY name`
-				case "\\l":
-					sqlToExequte = "SHOW DATABASES"
-				case "\\d":
-					sqlToExequte = "SHOW TABLES"
-				case "\\p":
-					sqlToExequte = "SELECT queryID, user, address, elapsed, read_rows, memory_usage FROM system.processes"
-				default:
-					println("Ignoring unknown command " + suffixCmd)
-					continue promptLoop
-				}
-				cmds[len(cmds)-1] += suffixCmd
-			}
+			sql := strings.Join(cmds, " ")
+			cmds = cmds[:0]
+			currentPrompt = prompt
+			writeUpdatedHistory(linerCtrl, historyFn, sql)
+		case resSkipAndContinue:
+			continue promptLoop
+		case resContinuePrompting:
+			cmds = append(cmds, line)
+			currentPrompt = promptNextLines
+			continue promptLoop
+		case resBreak:
+			break promptLoop
 		}
-
-		sql := strings.Join(cmds, " ")
-		cmds = cmds[:0]
-
-		currentPrompt = prompt
-
-		linerCtrl.AppendHistory(sql)
-
-		if f, err := os.Create(historyFn); err != nil {
-			log.Print("Error writing history file: ", err)
-		} else {
-			linerCtrl.WriteHistory(f)
-			f.Close()
-		}
-
-		if len(sqlToExequte) > 0 {
-			//
-			cx, cancel := context.WithCancel(context.Background())
-			queryFinished := make(chan bool)
-			go func() {
-				for {
-					select {
-					case <-signalCh:
-						cancel()
-					case <-queryFinished:
-						return
-					}
-				}
-			}()
-
-			setupOutput()
-			res := queryToStdout(cx, sqlToExequte, stdOut, stdErr)
-			releaseOutput()
-			if len(newDbName) > 0 && res == 200 {
-				opts.Database = newDbName
-			}
-			queryFinished <- true
-			if err != nil {
-				log.Fatal("Unable to start PAGER: ", err)
-			}
-		}
-
-		//queryToStdout2(cmd, stdOut, stdErr)
 	}
 
+}
+
+const ( // iota is reset to 0
+	resExecuted          = iota
+	resSkipAndContinue   = iota
+	resContinuePrompting = iota
+	resBreak             = iota
+)
+
+var exitRegexp = regexp.MustCompile("(?i)(?:^\\s*(?:exit|quit|logout)\\s*;?|^\\s*(?:учше|йгше|дщпщге)\\s*ж?|^\\s*q|^\\s*й|^\\s*:q|^\\s*Жй|\\\\[qй])\\s*$")
+var helpRegexp = regexp.MustCompile("(?:(?i)^\\s*help|\\\\[\\?h]|^\\s*\\?)\\s*$")
+var pagerRegexp = regexp.MustCompile("(?i)^\\s*pager\\s+(.+)\\s*$")
+var nopagerRegexp = regexp.MustCompile("(?i)^\\s*nopager\\s*$")
+
+var formatRegexp = regexp.MustCompile("(?i)FORMAT\\s+(\\w+|\"\\w+\"|`\\w+`)\\s*$")
+var intoOutfileRegexp = regexp.MustCompile("(?i)INTO\\s+OUTFILE\\s+'([^']+)'\\s*$")
+
+func executeOrContinue(prevLines []string, line string) int {
+
+	sqlToExequte := strings.Join(prevLines, " ") + " " + line
+	format := ""
+
+	// exit
+	switch {
+	case len(line) == 0:
+		return resSkipAndContinue
+
+	case exitRegexp.MatchString(line) || exitRegexp.MatchString(sqlToExequte):
+		return resBreak
+
+	case helpRegexp.MatchString(line) || helpRegexp.MatchString(sqlToExequte):
+		printHelp()
+		return resExecuted
+
+	case pagerRegexp.MatchString(line) || pagerRegexp.MatchString(sqlToExequte):
+		matches := pagerRegexp.FindStringSubmatch(line)
+		println("Setting pager to: " + matches[1]) // TODO stderr
+		setPager(matches[1])
+		return resExecuted
+
+	case nopagerRegexp.MatchString(line) || nopagerRegexp.MatchString(sqlToExequte):
+		println("Resetting pager")
+		setNoPager()
+		return resExecuted
+
+	case strings.HasSuffix(line, "\\#"):
+		initAutocomlete()
+		println("autocomplete keywords reloaded")
+		return resExecuted
+
+	case strings.HasSuffix(line, "\\c"):
+		return resExecuted
+
+	case strings.HasSuffix(line, "\\g"):
+		sqlToExequte = strings.TrimSuffix(sqlToExequte, "\\g")
+
+	case strings.HasSuffix(line, ";"):
+		sqlToExequte = strings.TrimSuffix(sqlToExequte, ";")
+
+	case strings.HasSuffix(line, "\\G"):
+		format = "Vertical"
+		sqlToExequte = strings.TrimSuffix(sqlToExequte, "\\G")
+
+	case strings.HasSuffix(line, "\\s"):
+		sqlToExequte = `SELECT * FROM (
+						SELECT name, value FROM system.build_options WHERE name in ('VERSION_FULL', 'VERSION_DESCRIBE', 'SYSTEM')
+						UNION ALL
+						SELECT 'currentDatabase', currentDatabase()
+						UNION ALL
+						SELECT 'timezone', timezone()
+						UNION ALL
+						SELECT 'uptime', toString(uptime())
+					) ORDER BY name`
+
+	case strings.HasSuffix(line, "\\l"):
+		sqlToExequte = "SHOW DATABASES"
+
+	case strings.HasSuffix(line, "\\d"):
+		sqlToExequte = "SHOW TABLES"
+
+	case strings.HasSuffix(line, "\\p"):
+		sqlToExequte = "SELECT query_id, user, address, elapsed, read_rows, memory_usage FROM system.processes"
+
+	default:
+		return resContinuePrompting
+	}
+
+	formatMatch := formatRegexp.FindStringSubmatch(sqlToExequte)
+
+	if formatMatch != nil {
+		format = strings.Trim(formatMatch[1], "\"`")
+		//println("Format:" + format)
+		sqlToExequte = formatRegexp.ReplaceAllString(sqlToExequte, "")
+		//println("SQL:" + sqlToExequte)
+	}
+
+	intoOutfileMatch := intoOutfileRegexp.FindStringSubmatch(sqlToExequte)
+	if intoOutfileMatch != nil {
+		setOutfile(strings.Trim(intoOutfileMatch[1], "'"))
+		sqlToExequte = intoOutfileRegexp.ReplaceAllString(sqlToExequte, "")
+
+		// for INTO OUTFILE default format is TabSeparated
+		if len(format) == 0 {
+			format = "TabSeparated"
+		}
+
+	}
+
+	if len(format) == 0 {
+		format = opts.Format
+	}
+
+	fire_query(sqlToExequte, format)
+	return resExecuted
+}
+
+var useCmdRegexp = regexp.MustCompile("^\\s*(?i)use\\s+(\"\\w+\"|\\w+|`\\w+`)\\s*$")
+
+// it will not match SET GLOBAL as set global not affect current session, according to docs
+var setCmdRegexp = regexp.MustCompile("^\\s*(?i)set\\s+(?:\"\\w+\"|\\w+|\\`\\w+\\`)\\s*=\\s*(?:'([^']+)'|[0-9]+|NULL)")
+var settingsRegexp = regexp.MustCompile("\\s*(\"\\w+\"|\\w+|\\`\\w+\\`)\\s*=\\s*('[^']+'|[0-9]+|NULL)\\s*,?")
+
+func fire_query(sqlToExequte, format string) {
+
+	signalCh := make(chan os.Signal, 1)
+
+	signal.Notify(signalCh, os.Interrupt)
+
+	cx, cancel := context.WithCancel(context.Background())
+	queryFinished := make(chan bool)
+	go func() {
+		for {
+			select {
+			case <-signalCh:
+				cancel()
+			case <-queryFinished:
+				return
+			}
+		}
+	}()
+
+	setupOutput()
+	res := queryToStdout(cx, sqlToExequte, format)
+	releaseOutput()
+	if res == 200 {
+		useCmdMatches := useCmdRegexp.FindStringSubmatch(sqlToExequte)
+		if useCmdMatches != nil {
+			opts.Database = strings.Trim(useCmdMatches[1], "\"`")
+			println("Database changed to " + opts.Database)
+		}
+		if setCmdRegexp.MatchString(sqlToExequte) {
+			settings := sqlToExequte[4:]
+			settingsMatched := settingsRegexp.FindAllStringSubmatch(settings, -1)
+			for _, match := range settingsMatched {
+				clickhouseSetting[strings.Trim(match[1], "\"`")] = strings.Trim(match[2], "'")
+			}
+			spew.Dump(clickhouseSetting)
+		}
+
+	}
+	queryFinished <- true
+}
+
+// wrapper for ReadHistory. Returns the number of lines read, and any read error (except io.EOF).
+func readHistoryFromFile(s *liner.State, historyFn string) (num int, err error) {
+	f, fileErr := os.Open(historyFn)
+	if fileErr != nil {
+		err = fileErr
+		return
+	}
+	defer f.Close()
+	return s.ReadHistory(f)
+}
+
+func writeUpdatedHistory(s *liner.State, historyFn string, new_history_line string) (num int, err error) {
+	s.AppendHistory(new_history_line)
+
+	f, fileErr := os.Create(historyFn)
+
+	if fileErr != nil {
+		err = fileErr
+		return
+	}
+	defer f.Close()
+	return s.WriteHistory(f)
 }
 
 func printHelp() {
@@ -229,7 +274,6 @@ Following commands are supported (can be changed in further versions).
 ?    - help
 help - help
 exit - exit (also understands "quit", "logout", "q")
-USE  - change database
 
 
 Mysql/psql-alike commands
@@ -246,4 +290,26 @@ Mysql/psql-alike commands
 \q - quit
 `)
 
+}
+
+func homedir() string {
+	home := os.Getenv("HOME") // *nix style
+
+	if home != "" {
+		return home
+	}
+
+	home = os.Getenv("HOMEDRIVE") + os.Getenv("HOMEPATH") // Windows style
+
+	if home != "" {
+		return home
+	}
+
+	home = os.Getenv("USERPROFILE") // Windows option 2
+
+	if home != "" {
+		return home
+	}
+
+	return os.Getenv("TEMP") // may be at least temp exists?
 }
