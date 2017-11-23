@@ -146,6 +146,12 @@ func executeOrContinue(prevLines []string, line string) int {
 		return resContinuePrompting
 	}
 
+	sqlToExequte, format = parseFormatAndOutfile(sqlToExequte, format)
+	fireQuery(sqlToExequte, format)
+	return resExecuted
+}
+
+func parseFormatAndOutfile(sqlToExequte, format string) (string, string) {
 	formatMatch := formatRegexp.FindStringSubmatch(sqlToExequte)
 
 	if formatMatch != nil {
@@ -170,9 +176,7 @@ func executeOrContinue(prevLines []string, line string) int {
 	if len(format) == 0 {
 		format = opts.Format
 	}
-
-	fire_query(sqlToExequte, format)
-	return resExecuted
+	return sqlToExequte, format
 }
 
 var useCmdRegexp = regexp.MustCompile("^\\s*(?i)use\\s+(\"\\w+\"|\\w+|`\\w+`)\\s*$")
@@ -181,7 +185,7 @@ var useCmdRegexp = regexp.MustCompile("^\\s*(?i)use\\s+(\"\\w+\"|\\w+|`\\w+`)\\s
 var setCmdRegexp = regexp.MustCompile("^\\s*(?i)set\\s+(?:\"\\w+\"|\\w+|\\`\\w+\\`)\\s*=\\s*(?:'([^']+)'|[0-9]+|NULL)")
 var settingsRegexp = regexp.MustCompile("\\s*(\"\\w+\"|\\w+|\\`\\w+\\`)\\s*=\\s*('[^']+'|[0-9]+|NULL)\\s*,?")
 
-func fire_query(sqlToExequte, format string) {
+func fireQuery(sqlToExequte, format string) {
 
 	signalCh := make(chan os.Signal, 1)
 
@@ -233,8 +237,8 @@ func readHistoryFromFile(s *liner.State, historyFn string) (num int, err error) 
 	return s.ReadHistory(f)
 }
 
-func writeUpdatedHistory(s *liner.State, historyFn string, new_history_line string) (num int, err error) {
-	s.AppendHistory(new_history_line)
+func writeUpdatedHistory(s *liner.State, historyFn string, newHistoryLine string) (num int, err error) {
+	s.AppendHistory(newHistoryLine)
 
 	f, fileErr := os.Create(historyFn)
 
