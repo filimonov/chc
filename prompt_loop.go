@@ -278,6 +278,8 @@ Following commands are supported (can be changed in further versions).
 ?    - help
 help - help
 exit - exit (also understands "quit", "logout", "q")
+pager - set pager (for example pager less -S -R)
+nopager - disable pager
 
 
 Mysql/psql-alike commands
