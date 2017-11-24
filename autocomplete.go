@@ -136,7 +136,9 @@ func initAutocomlete() {
 		"TinyLog",
 		"View",
 
+		// https://github.com/yandex/ClickHouse/blob/master/dbms/src/DataStreams/FormatFactory.cpp
 		"BlockTabSeparated",
+		"CapnProto",
 		"CSV",
 		"CSVWithNames",
 		"JSON",
@@ -144,6 +146,8 @@ func initAutocomlete() {
 		"JSONEachRow",
 		"Native",
 		"Null",
+		"Null",
+		"ODBCDriver",
 		"Pretty",
 		"PrettyCompact",
 		"PrettyCompactMonoBlock",
@@ -157,8 +161,13 @@ func initAutocomlete() {
 		"TabSeparatedWithNames",
 		"TabSeparatedWithNamesAndTypes",
 		"TSKV",
+		"TSV",
+		"TSVRaw",
+		"TSVWithNames",
+		"TSVWithNamesAndTypes",
 		"Values",
 		"Vertical",
+		"VerticalRaw",
 		"XML",
 
 		"Array",
@@ -170,18 +179,19 @@ func initAutocomlete() {
 		"FixedString",
 		"Float32",
 		"Float64",
+		"Int8",
 		"Int16",
 		"Int32",
 		"Int64",
-		"Int8",
 		"Nullable",
 		"Set",
 		"String",
 		"Tuple",
+		"UInt8",
 		"UInt16",
 		"UInt32",
 		"UInt64",
-		"UInt8"}
+	}
 
 	query := `
 	 SELECT concat('dictGet', t, '(\'', name, '\',\'', n,'\',' ,replaceRegexpAll(key,'([A-Za-z0-9]+)','to\\1(id)'), ')') as n2
