@@ -107,26 +107,26 @@ func getQueryStats(queryID string) (qs queryStats, err error) {
 	return
 }
 
-func countRows(line, format string, counter_state *int, count *int64) {
+func countRows(line, format string, counterState *int, count *int64) {
 	switch format {
 	case "TabSeparated", "TSV", "CSV", "TSKV", "JSONEachRow", "TabSeparatedRaw", "TSVRaw":
 		*count++
 	case "TabSeparatedWithNames", "TSVWithNames", "CSVWithNames":
-		if *counter_state > 0 {
+		if *counterState > 0 {
 			*count++
 		} else {
-			*counter_state++
+			*counterState++
 		}
 	case "TabSeparatedWithNamesAndTypes", "TSVWithNamesAndTypes", "PrettySpace":
-		if *counter_state > 1 {
+		if *counterState > 1 {
 			*count++
 		} else {
-			*counter_state++
+			*counterState++
 		}
 	case "BlockTabSeparated":
-		if *counter_state == 0 {
+		if *counterState == 0 {
 			*count = int64(strings.Count(line, "\t")) + 1
-			*counter_state = 1
+			*counterState = 1
 		}
 	case "Pretty", "PrettyCompact", "PrettyCompactMonoBlock", "PrettyNoEscapes", "PrettyCompactNoEscapes", "PrettySpaceNoEscapes":
 		if strings.HasPrefix(line, "│") {
@@ -137,41 +137,41 @@ func countRows(line, format string, counter_state *int, count *int64) {
 			*count++
 		}
 	case "JSON", "JSONCompact":
-		line_trimmed := strings.TrimSpace(line)
-		switch *counter_state {
+		lineTrimmed := strings.TrimSpace(line)
+		switch *counterState {
 		case 0: // waiting for data start
-			if line_trimmed == "\"data\":" {
-				*counter_state = 1
+			if lineTrimmed == "\"data\":" {
+				*counterState = 1
 			}
 		case 1: // waiting for </data> start
-			if line_trimmed == "]," {
-				*counter_state = 2
+			if lineTrimmed == "]," {
+				*counterState = 2
 			}
 		case 2: // waiting for <rows>
-			if strings.HasPrefix(line_trimmed, "\"rows\":") {
-				line_trimmed = strings.TrimPrefix(line_trimmed, "\"rows\": ")
-				line_trimmed = strings.TrimSuffix(line_trimmed, ",")
-				*count, _ = strconv.ParseInt(line_trimmed, 10, 64)
-				*counter_state = 3
+			if strings.HasPrefix(lineTrimmed, "\"rows\":") {
+				lineTrimmed = strings.TrimPrefix(lineTrimmed, "\"rows\": ")
+				lineTrimmed = strings.TrimSuffix(lineTrimmed, ",")
+				*count, _ = strconv.ParseInt(lineTrimmed, 10, 64)
+				*counterState = 3
 			}
 		}
 	case "XML":
-		line_trimmed := strings.TrimSpace(line)
-		switch *counter_state {
+		lineTrimmed := strings.TrimSpace(line)
+		switch *counterState {
 		case 0: // waiting for <data> start
-			if strings.HasPrefix(line_trimmed, "<data>") {
-				*counter_state = 1
+			if strings.HasPrefix(lineTrimmed, "<data>") {
+				*counterState = 1
 			}
 		case 1: // waiting for </data> start
-			if strings.HasPrefix(line_trimmed, "</data>") {
-				*counter_state = 2
+			if strings.HasPrefix(lineTrimmed, "</data>") {
+				*counterState = 2
 			}
 		case 2: // waiting for <rows>
-			if strings.HasPrefix(line_trimmed, "<rows>") {
-				line_trimmed = strings.TrimPrefix(line_trimmed, "<rows>")
-				line_trimmed = strings.TrimSuffix(line_trimmed, "</rows>")
-				*count, _ = strconv.ParseInt(line_trimmed, 10, 64)
-				*counter_state = 3
+			if strings.HasPrefix(lineTrimmed, "<rows>") {
+				lineTrimmed = strings.TrimPrefix(lineTrimmed, "<rows>")
+				lineTrimmed = strings.TrimSuffix(lineTrimmed, "</rows>")
+				*count, _ = strconv.ParseInt(lineTrimmed, 10, 64)
+				*counterState = 3
 			}
 		}
 	default:
@@ -193,8 +193,8 @@ func hasDataInStdin() bool {
 func queryToStdout(cx context.Context, query, format string, interactive bool) int {
 
 	queryID := uuid.NewV4().String()
-	var counter_state int = 0
-	var count int64 = 0
+	var counterState int // = 0
+	var count int64      // = 0
 	status := -1
 
 	errorChannel := make(chan error)
@@ -321,7 +321,7 @@ Loop2:
 			break Loop2
 		case data := <-dataChannel:
 			clearProgress(stdErr)
-			countRows(data, format, &counter_state, &count)
+			countRows(data, format, &counterState, &count)
 			io.WriteString(stdOut, data)
 		}
 	}

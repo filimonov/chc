@@ -128,6 +128,8 @@ func executeOrContinue(prevLines []string, line string) int {
 						UNION ALL
 						SELECT 'currentDatabase', currentDatabase()
 						UNION ALL
+						SELECT 'hostName', hostName()
+						UNION ALL
 						SELECT 'timezone', timezone()
 						UNION ALL
 						SELECT 'uptime', toString(uptime())

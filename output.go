@@ -24,7 +24,7 @@ var pagerParams []string
 var waitingPager chan struct{}
 
 func printServiceMsg(str string) {
-	fmt.Fprintln(stdErr, str)
+	fmt.Fprint(stdErr, str)
 }
 
 func setPager(cmd string) {

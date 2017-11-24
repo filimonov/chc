@@ -107,7 +107,11 @@ func main() {
 		promptLoop()
 		fmt.Println("Bye")
 	} else {
-		fireQuery(opts.Query, "TabSeparated", false)
+		if opts.Format == "" {
+			opts.Format = "TabSeparated"
+		}
+
+		fireQuery(opts.Query, opts.Format, false)
 	}
 
 }
