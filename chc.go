@@ -74,13 +74,6 @@ func parseArgs() {
 		os.Exit(1)
 	}
 
-	if opts.Format == "" {
-		if isatty.IsTerminal(os.Stdout.Fd()) {
-			opts.Format = "PrettyCompact"
-		} else {
-			opts.Format = "TabSeparated"
-		}
-	}
 	/*
 		fmt.Printf("Remaining args: %s\n", strings.Join(args, " "))
 	*/
@@ -92,16 +85,29 @@ func main() {
 
 	parseArgs()
 
-	fmt.Printf("chc (ClickHouse CLI portable) %s\n", versionString)
-	fmt.Printf("Connecting to database %s at %s as user %s.\n", opts.Database, getHost(), opts.User)
-
 	serverVersion, err := getServerVersion()
 	if err != nil {
 		log.Fatalln(err)
 	}
 
-	fmt.Printf("Connected to ClickHouse server version %s.\n\n", serverVersion)
+	if len(opts.Pager) > 0 {
+		setPager(opts.Pager)
+	}
 
-	promptLoop()
+	if isatty.IsTerminal(os.Stdin.Fd()) && len(opts.Query) == 0 {
+		opts.Progress = true
+		fmt.Printf("chc (ClickHouse CLI portable) %s\n", versionString)
+		fmt.Printf("Connecting to database %s at %s as user %s.\n", opts.Database, getHost(), opts.User)
+		fmt.Printf("Connected to ClickHouse server version %s.\n\n", serverVersion)
+
+		if opts.Format == "" {
+			opts.Format = "PrettyCompact"
+		}
+
+		promptLoop()
+		fmt.Println("Bye")
+	} else {
+		fireQuery(opts.Query, "TabSeparated", false)
+	}
 
 }

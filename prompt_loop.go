@@ -95,18 +95,18 @@ func executeOrContinue(prevLines []string, line string) int {
 
 	case pagerRegexp.MatchString(line) || pagerRegexp.MatchString(sqlToExequte):
 		matches := pagerRegexp.FindStringSubmatch(line)
-		println("Setting pager to: " + matches[1]) // TODO stderr
+		printServiceMsg("Setting pager to: " + matches[1] + "\n") // TODO stderr
 		setPager(matches[1])
 		return resExecuted
 
 	case nopagerRegexp.MatchString(line) || nopagerRegexp.MatchString(sqlToExequte):
-		println("Resetting pager")
+		printServiceMsg("Resetting pager" + "\n")
 		setNoPager()
 		return resExecuted
 
 	case strings.HasSuffix(line, "\\#"):
 		initAutocomlete()
-		println("autocomplete keywords reloaded")
+		printServiceMsg("autocomplete keywords reloaded" + "\n")
 		return resExecuted
 
 	case strings.HasSuffix(line, "\\c"):
@@ -147,7 +147,7 @@ func executeOrContinue(prevLines []string, line string) int {
 	}
 
 	sqlToExequte, format = parseFormatAndOutfile(sqlToExequte, format)
-	fireQuery(sqlToExequte, format)
+	fireQuery(sqlToExequte, format, true)
 	return resExecuted
 }
 
@@ -185,7 +185,7 @@ var useCmdRegexp = regexp.MustCompile("^\\s*(?i)use\\s+(\"\\w+\"|\\w+|`\\w+`)\\s
 var setCmdRegexp = regexp.MustCompile("^\\s*(?i)set\\s+(?:\"\\w+\"|\\w+|\\`\\w+\\`)\\s*=\\s*(?:'([^']+)'|[0-9]+|NULL)")
 var settingsRegexp = regexp.MustCompile("\\s*(\"\\w+\"|\\w+|\\`\\w+\\`)\\s*=\\s*('[^']+'|[0-9]+|NULL)\\s*,?")
 
-func fireQuery(sqlToExequte, format string) {
+func fireQuery(sqlToExequte, format string, interactive bool) {
 
 	signalCh := make(chan os.Signal, 1)
 
@@ -205,13 +205,13 @@ func fireQuery(sqlToExequte, format string) {
 	}()
 
 	setupOutput()
-	res := queryToStdout(cx, sqlToExequte, format)
+	res := queryToStdout(cx, sqlToExequte, format, interactive)
 	releaseOutput()
 	if res == 200 {
 		useCmdMatches := useCmdRegexp.FindStringSubmatch(sqlToExequte)
 		if useCmdMatches != nil {
 			opts.Database = strings.Trim(useCmdMatches[1], "\"`")
-			println("Database changed to " + opts.Database)
+			printServiceMsg("Database changed to " + opts.Database)
 		}
 		if setCmdRegexp.MatchString(sqlToExequte) {
 			settings := sqlToExequte[4:]
@@ -251,7 +251,7 @@ func writeUpdatedHistory(s *liner.State, historyFn string, newHistoryLine string
 }
 
 func printHelp() {
-	println(`
+	printServiceMsg(`
 Hotkeys:
 Ctrl-A, Home      Move cursor to beginning of line
 Ctrl-E, End       Move cursor to end of line
@@ -278,7 +278,7 @@ Following commands are supported (can be changed in further versions).
 ?    - help
 help - help
 exit - exit (also understands "quit", "logout", "q")
-pager - set pager (for example pager less -S -R)
+pager - set pager (for example "pager less -S -R")
 nopager - disable pager
 
 

@@ -14,6 +14,7 @@ import (
 	//"math"
 	"net"
 	"net/http"
+	"os"
 	//	"net/url"
 	"encoding/json"
 	"strconv"
@@ -58,15 +59,12 @@ func getServerVersion() (version string, err error) {
 func getProgressInfo(queryID string) (pi progressInfo, err error) {
 	pi = progressInfo{}
 	query := fmt.Sprintf("select elapsed,read_rows,read_bytes,total_rows_approx,written_rows,written_bytes,memory_usage from system.processes where query_id='%s'", queryID)
-	//println(query)
 	data, err := serviceRequest(query)
 
 	if err != nil {
-		//	println("1?")
 		return
 	}
 	if len(data) != 1 || len(data[0]) != 7 {
-		//	println("2?")
 		err = errors.New("Bad response dimensions")
 		return
 	}
@@ -182,7 +180,17 @@ func countRows(line, format string, counter_state *int, count *int64) {
 	}
 }
 
-func queryToStdout(cx context.Context, query, format string) int {
+func hasDataInStdin() bool {
+	fi, err := os.Stdin.Stat()
+	if err == nil {
+		if fi.Mode()&os.ModeNamedPipe != 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func queryToStdout(cx context.Context, query, format string, interactive bool) int {
 
 	queryID := uuid.NewV4().String()
 	var counter_state int = 0
@@ -200,31 +208,43 @@ func queryToStdout(cx context.Context, query, format string) int {
 	start := time.Now()
 	finishTickerChannel := make(chan bool, 3)
 
-	go func() {
+	if opts.Progress {
 
-		ticker := time.NewTicker(time.Millisecond * 125)
+		go func() {
 
-	Loop3:
-		for {
-			select {
-			case <-ticker.C:
-				pi, err := getProgressInfo(queryID)
-				if err == nil {
-					progressChannel <- pi
+			ticker := time.NewTicker(time.Millisecond * 125)
+
+		Loop3:
+			for {
+				select {
+				case <-ticker.C:
+					pi, err := getProgressInfo(queryID)
+					if err == nil {
+						progressChannel <- pi
+					}
+				case <-finishTickerChannel:
+					break Loop3
 				}
-			case <-finishTickerChannel:
-				break Loop3
 			}
-		}
-		ticker.Stop()
+			ticker.Stop()
 
-		// println("ticker funct finished")
-	}()
+			// println("ticker funct finished")
+		}()
+
+	}
 
 	go func() {
 		extraSettings := map[string]string{"log_queries": "1", "query_id": queryID, "session_id": sessionID}
-
-		req, err := prepareRequest(query, format, extraSettings)
+		var req *http.Request
+		var err error
+		if interactive || !hasDataInStdin() {
+			req, err = prepareRequest(query, format, extraSettings)
+		} else {
+			if len(query) > 0 {
+				extraSettings["query"] = query
+			}
+			req, err = prepareRequestReader(os.Stdin, format, extraSettings)
+		}
 		if err != nil {
 			errorChannel <- err
 			return
@@ -277,11 +297,11 @@ Loop2:
 		case <-cx.Done():
 			finishTickerChannel <- true // aware deadlocks here, we uses buffered channel here
 			clearProgress(stdErr)
-			io.WriteString(stdErr, fmt.Sprintf("\nKilling query (id: %v)... ", queryID))
+			printServiceMsg(fmt.Sprintf("\nKilling query (id: %v)... ", queryID))
 			if killQuery(queryID) {
-				io.WriteString(stdErr, "killed!\n\n")
+				printServiceMsg("killed!\n\n")
 			} else {
-				io.WriteString(stdErr, "failure!\n\n")
+				printServiceMsg("failure!\n\n")
 			}
 			break Loop2
 		case err := <-errorChannel:
@@ -291,10 +311,12 @@ Loop2:
 		case <-doneChannel:
 			finishTickerChannel <- true // we use buffered channel here to avoid deadlocks
 			clearProgress(stdErr)
-			if status == 200 {
-				io.WriteString(stdErr, fmt.Sprintf("\n%v row(s) in %v\n\n", count, time.Since(start)))
-			} else {
-				io.WriteString(stdErr, fmt.Sprintf("\nElapsed: %v\n\n", time.Since(start)))
+			if opts.Progress {
+				if status == 200 {
+					printServiceMsg(fmt.Sprintf("\n%v row(s) in %v\n\n", count, time.Since(start)))
+				} else {
+					printServiceMsg(fmt.Sprintf("\nElapsed: %v\n\n", time.Since(start)))
+				}
 			}
 			break Loop2
 		case data := <-dataChannel:

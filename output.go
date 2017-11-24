@@ -1,10 +1,10 @@
 package main
 
 import (
+	"fmt"
 	"github.com/mattn/go-colorable" // make colors work on windows
-	"log"
-
 	"io"
+	"log"
 	"os"
 	"os/exec"
 	"strings"
@@ -22,6 +22,10 @@ var pagerExecutable string
 var pagerParams []string
 
 var waitingPager chan struct{}
+
+func printServiceMsg(str string) {
+	fmt.Fprintln(stdErr, str)
+}
 
 func setPager(cmd string) {
 	parts := strings.Split(cmd, " ")
