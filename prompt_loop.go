@@ -1,12 +1,9 @@
 package main
 
 import (
-	"context"
-	"github.com/davecgh/go-spew/spew"
 	"github.com/peterh/liner" // there is also github.com/chzyer/readline and https://github.com/Bowery/prompt
 	//"log"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -95,18 +92,18 @@ func executeOrContinue(prevLines []string, line string) int {
 
 	case pagerRegexp.MatchString(line) || pagerRegexp.MatchString(sqlToExequte):
 		matches := pagerRegexp.FindStringSubmatch(line)
-		printServiceMsg("Setting pager to: " + matches[1] + "\n") // TODO stderr
-		setPager(matches[1])
+		chcOutput.printServiceMsg("Setting pager to: " + matches[1] + "\n") // TODO stderr
+		chcOutput.setPager(matches[1])
 		return resExecuted
 
 	case nopagerRegexp.MatchString(line) || nopagerRegexp.MatchString(sqlToExequte):
-		printServiceMsg("Resetting pager" + "\n")
-		setNoPager()
+		chcOutput.printServiceMsg("Resetting pager" + "\n")
+		chcOutput.reset()
 		return resExecuted
 
 	case strings.HasSuffix(line, "\\#"):
 		initAutocomlete()
-		printServiceMsg("autocomplete keywords reloaded" + "\n")
+		chcOutput.printServiceMsg("autocomplete keywords reloaded" + "\n")
 		return resExecuted
 
 	case strings.HasSuffix(line, "\\c"):
@@ -165,7 +162,7 @@ func parseFormatAndOutfile(sqlToExequte, format string) (string, string) {
 
 	intoOutfileMatch := intoOutfileRegexp.FindStringSubmatch(sqlToExequte)
 	if intoOutfileMatch != nil {
-		setOutfile(strings.Trim(intoOutfileMatch[1], "'"))
+		chcOutput.setOutfile(strings.Trim(intoOutfileMatch[1], "'"))
 		sqlToExequte = intoOutfileRegexp.ReplaceAllString(sqlToExequte, "")
 
 		// for INTO OUTFILE default format is TabSeparated
@@ -179,53 +176,6 @@ func parseFormatAndOutfile(sqlToExequte, format string) (string, string) {
 		format = opts.Format
 	}
 	return sqlToExequte, format
-}
-
-var useCmdRegexp = regexp.MustCompile("^\\s*(?i)use\\s+(\"\\w+\"|\\w+|`\\w+`)\\s*$")
-
-// it will not match SET GLOBAL as set global not affect current session, according to docs
-var setCmdRegexp = regexp.MustCompile("^\\s*(?i)set\\s+(?:\"\\w+\"|\\w+|\\`\\w+\\`)\\s*=\\s*(?:'([^']+)'|[0-9]+|NULL)")
-var settingsRegexp = regexp.MustCompile("\\s*(\"\\w+\"|\\w+|\\`\\w+\\`)\\s*=\\s*('[^']+'|[0-9]+|NULL)\\s*,?")
-
-func fireQuery(sqlToExequte, format string, interactive bool) {
-
-	signalCh := make(chan os.Signal, 1)
-
-	signal.Notify(signalCh, os.Interrupt)
-
-	cx, cancel := context.WithCancel(context.Background())
-	queryFinished := make(chan bool)
-	go func() {
-		for {
-			select {
-			case <-signalCh:
-				cancel()
-			case <-queryFinished:
-				return
-			}
-		}
-	}()
-
-	setupOutput()
-	res := queryToStdout(cx, sqlToExequte, format, interactive)
-	releaseOutput()
-	if res == 200 {
-		useCmdMatches := useCmdRegexp.FindStringSubmatch(sqlToExequte)
-		if useCmdMatches != nil {
-			opts.Database = strings.Trim(useCmdMatches[1], "\"`")
-			printServiceMsg("Database changed to " + opts.Database)
-		}
-		if setCmdRegexp.MatchString(sqlToExequte) {
-			settings := sqlToExequte[4:]
-			settingsMatched := settingsRegexp.FindAllStringSubmatch(settings, -1)
-			for _, match := range settingsMatched {
-				clickhouseSetting[strings.Trim(match[1], "\"`")] = strings.Trim(match[2], "'")
-			}
-			spew.Dump(clickhouseSetting)
-		}
-
-	}
-	queryFinished <- true
 }
 
 // wrapper for ReadHistory. Returns the number of lines read, and any read error (except io.EOF).
@@ -253,7 +203,7 @@ func writeUpdatedHistory(s *liner.State, historyFn string, newHistoryLine string
 }
 
 func printHelp() {
-	printServiceMsg(`
+	chcOutput.printServiceMsg(`
 Hotkeys:
 Ctrl-A, Home      Move cursor to beginning of line
 Ctrl-E, End       Move cursor to end of line

@@ -81,6 +81,7 @@ func initAutocomlete() {
 		"OPTIMIZE TABLE",
 		"ORDER",
 		"ORDER BY",
+		"OUTFILE",
 		"PARTITION",
 		"POPULATE",
 		"PREWHERE",

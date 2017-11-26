@@ -7,8 +7,11 @@ import (
 	"errors"
 	"fmt"
 	//	"github.com/davecgh/go-spew/spew"
+	"github.com/davecgh/go-spew/spew"
 	"github.com/satori/go.uuid" // generate sessionID and queryID
 	"io"
+	"os/signal"
+	"regexp"
 	// "io/ioutil"
 	"log"
 	//"math"
@@ -190,6 +193,53 @@ func hasDataInStdin() bool {
 	return false
 }
 
+var useCmdRegexp = regexp.MustCompile("^\\s*(?i)use\\s+(\"\\w+\"|\\w+|`\\w+`)\\s*$")
+
+// it will not match SET GLOBAL as set global not affect current session, according to docs
+var setCmdRegexp = regexp.MustCompile("^\\s*(?i)set\\s+(?:\"\\w+\"|\\w+|\\`\\w+\\`)\\s*=\\s*(?:'([^']+)'|[0-9]+|NULL)")
+var settingsRegexp = regexp.MustCompile("\\s*(\"\\w+\"|\\w+|\\`\\w+\\`)\\s*=\\s*('[^']+'|[0-9]+|NULL)\\s*,?")
+
+func fireQuery(sqlToExequte, format string, interactive bool) {
+
+	signalCh := make(chan os.Signal, 1)
+
+	signal.Notify(signalCh, os.Interrupt)
+
+	cx, cancel := context.WithCancel(context.Background())
+	queryFinished := make(chan bool)
+	go func() {
+		for {
+			select {
+			case <-signalCh:
+				cancel()
+			case <-queryFinished:
+				return
+			}
+		}
+	}()
+
+	chcOutput.setupOutput()
+	res := queryToStdout(cx, sqlToExequte, format, interactive)
+	chcOutput.releaseOutput()
+	if res == 200 {
+		useCmdMatches := useCmdRegexp.FindStringSubmatch(sqlToExequte)
+		if useCmdMatches != nil {
+			opts.Database = strings.Trim(useCmdMatches[1], "\"`")
+			chcOutput.printServiceMsg("Database changed to " + opts.Database)
+		}
+		if setCmdRegexp.MatchString(sqlToExequte) {
+			settings := sqlToExequte[4:]
+			settingsMatched := settingsRegexp.FindAllStringSubmatch(settings, -1)
+			for _, match := range settingsMatched {
+				clickhouseSetting[strings.Trim(match[1], "\"`")] = strings.Trim(match[2], "'")
+			}
+			spew.Dump(clickhouseSetting)
+		}
+
+	}
+	queryFinished <- true
+}
+
 func queryToStdout(cx context.Context, query, format string, interactive bool) int {
 
 	queryID := uuid.NewV4().String()
@@ -296,42 +346,43 @@ Loop2:
 			status = st
 		case <-cx.Done():
 			finishTickerChannel <- true // aware deadlocks here, we uses buffered channel here
-			clearProgress(stdErr)
-			printServiceMsg(fmt.Sprintf("\nKilling query (id: %v)... ", queryID))
+			clearProgress(chcOutput.StdErr)
+			chcOutput.printServiceMsg(fmt.Sprintf("\nKilling query (id: %v)... ", queryID))
 			if killQuery(queryID) {
-				printServiceMsg("killed!\n\n")
+				chcOutput.printServiceMsg("killed!\n\n")
 			} else {
-				printServiceMsg("failure!\n\n")
+				chcOutput.printServiceMsg("failure!\n\n")
 			}
 			break Loop2
 		case err := <-errorChannel:
 			log.Fatalln(err)
 		case pi := <-progressChannel:
-			writeProgres(stdErr, pi.ReadRows, pi.ReadBytes, pi.TotalRowsApprox, uint64(pi.Elapsed*1000000000))
+			writeProgres(chcOutput.StdErr, pi.ReadRows, pi.ReadBytes, pi.TotalRowsApprox, uint64(pi.Elapsed*1000000000))
 		case <-doneChannel:
 			finishTickerChannel <- true // we use buffered channel here to avoid deadlocks
-			clearProgress(stdErr)
-			if opts.Progress {
+			clearProgress(chcOutput.StdErr)
+			if opts.Time {
 				if status == 200 {
-					printServiceMsg(fmt.Sprintf("\n%v row(s) in %v\n\n", count, time.Since(start)))
+					chcOutput.printServiceMsg(fmt.Sprintf("\n%v rows in set. Elapsed: %v\n\n", count, time.Since(start)))
 				} else {
-					printServiceMsg(fmt.Sprintf("\nElapsed: %v\n\n", time.Since(start)))
+					chcOutput.printServiceMsg(fmt.Sprintf("\nElapsed: %v\n\n", time.Since(start)))
 				}
 			}
 			break Loop2
 		case data := <-dataChannel:
-			clearProgress(stdErr)
+			clearProgress(chcOutput.StdErr)
 			countRows(data, format, &counterState, &count)
-			io.WriteString(stdOut, data)
+			io.WriteString(chcOutput.StdOut, data)
 		}
 	}
 	return status
 	// io.WriteString(stdErr, "queryToStdout finished" );
 }
 
-func queryToStdout2(query string, stdOut, stdErr io.Writer) {
-	stdOutBuffered := bufio.NewWriter(stdOut)
-	stdErrBuffered := bufio.NewWriter(stdErr)
+// another options - with progress in heeaders
+func queryToStdout2(query string) {
+	stdOutBuffered := bufio.NewWriter(chcOutput.StdOut)
+	stdErrBuffered := bufio.NewWriter(chcOutput.StdErr)
 
 	extraSettings := map[string]string{"send_progress_in_http_headers": "1"}
 
