@@ -69,9 +69,13 @@ func (output *outputStruct) setOutfile(filename string) {
 			output.fileName = filename
 			output.outputMode = omFile
 			output.fileBufferedWriter = bufio.NewWriter(output.fileHandle)
+			return
 		}
 
 	}
+	output.printServiceMsg("File "+filename + " already exists or not writable. ") // TODO
+	output.printServiceMsg("Will use STDOUT\n\n") 
+	 
 
 }
 

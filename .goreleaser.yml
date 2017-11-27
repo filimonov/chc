@@ -1,0 +1,30 @@
+# .goreleaser.yml
+# Build customization
+builds:
+  - binary: chc
+    goos:
+      - windows
+      - darwin
+      - linux
+
+    ignore:
+      - goos: darwin
+        goarch: 386
+
+
+archive:
+  format: tar.gz
+
+  replacements:
+    amd64: 64-bit
+    386: 32-bit
+    darwin: macOS
+    linux: Tux
+
+  files:
+    - LICENSE
+    - README.md
+
+  format_overrides:
+    - goos: windows
+      format: zip
