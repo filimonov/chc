@@ -97,13 +97,13 @@ func executeOrContinue(prevLines []string, line string) int {
 		return resExecuted
 
 	case nopagerRegexp.MatchString(line) || nopagerRegexp.MatchString(sqlToExequte):
-		chcOutput.printServiceMsg("Resetting pager" + "\n")
+		chcOutput.printServiceMsg("Resetting pager\n")
 		chcOutput.reset()
 		return resExecuted
 
 	case strings.HasSuffix(line, "\\#"):
 		initAutocomlete()
-		chcOutput.printServiceMsg("autocomplete keywords reloaded" + "\n")
+		chcOutput.printServiceMsg("autocomplete keywords reloaded\n")
 		return resExecuted
 
 	case strings.HasSuffix(line, "\\c"):
@@ -116,7 +116,7 @@ func executeOrContinue(prevLines []string, line string) int {
 		sqlToExequte = strings.TrimSuffix(sqlToExequte, ";")
 
 	case strings.HasSuffix(line, "\\G"):
-		format = "Vertical"
+		format = formatVertical
 		sqlToExequte = strings.TrimSuffix(sqlToExequte, "\\G")
 
 	case strings.HasSuffix(line, "\\s"):
@@ -167,7 +167,7 @@ func parseFormatAndOutfile(sqlToExequte, format string) (string, string) {
 
 		// for INTO OUTFILE default format is TabSeparated
 		if len(format) == 0 {
-			format = "TabSeparated"
+			format = formatTabSeparated
 		}
 
 	}

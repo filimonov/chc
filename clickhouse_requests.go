@@ -7,11 +7,12 @@ import (
 	"errors"
 	"fmt"
 	//	"github.com/davecgh/go-spew/spew"
-	"github.com/davecgh/go-spew/spew"
-	"github.com/satori/go.uuid" // generate sessionID and queryID
 	"io"
 	"os/signal"
 	"regexp"
+
+	"github.com/davecgh/go-spew/spew"
+	"github.com/satori/go.uuid" // generate sessionID and queryID
 	// "io/ioutil"
 	"log"
 	//"math"
@@ -25,7 +26,7 @@ import (
 	"time"
 )
 
-var sessionID string = uuid.NewV4().String()
+var sessionID = uuid.NewV4().String()
 
 type progressInfo struct {
 	Elapsed         float64
@@ -112,7 +113,7 @@ func getQueryStats(queryID string) (qs queryStats, err error) {
 
 func countRows(line, format string, counterState *int, count *int64) {
 	switch format {
-	case "TabSeparated", "TSV", "CSV", "TSKV", "JSONEachRow", "TabSeparatedRaw", "TSVRaw":
+	case formatTabSeparated, "TSV", "CSV", "TSKV", "JSONEachRow", "TabSeparatedRaw", "TSVRaw":
 		*count++
 	case "TabSeparatedWithNames", "TSVWithNames", "CSVWithNames":
 		if *counterState > 0 {
@@ -135,7 +136,7 @@ func countRows(line, format string, counterState *int, count *int64) {
 		if strings.HasPrefix(line, "│") {
 			*count++
 		}
-	case "Vertical", "VerticalRaw":
+	case formatVertical, "VerticalRaw":
 		if strings.HasPrefix(line, "───") {
 			*count++
 		}
@@ -206,6 +207,8 @@ func fireQuery(sqlToExequte, format string, interactive bool) {
 	signal.Notify(signalCh, os.Interrupt)
 
 	cx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	queryFinished := make(chan bool)
 	go func() {
 		for {
@@ -225,7 +228,7 @@ func fireQuery(sqlToExequte, format string, interactive bool) {
 		useCmdMatches := useCmdRegexp.FindStringSubmatch(sqlToExequte)
 		if useCmdMatches != nil {
 			opts.Database = strings.Trim(useCmdMatches[1], "\"`")
-			chcOutput.printServiceMsg("Database changed to " + opts.Database)
+			chcOutput.printServiceMsg("Database changed to " + opts.Database + "\n")
 		}
 		if setCmdRegexp.MatchString(sqlToExequte) {
 			settings := sqlToExequte[4:]
@@ -292,6 +295,7 @@ func queryToStdout(cx context.Context, query, format string, interactive bool) i
 		} else {
 			if len(query) > 0 {
 				extraSettings["query"] = query
+
 			}
 			req, err = prepareRequestReader(os.Stdin, format, extraSettings)
 		}
@@ -401,19 +405,18 @@ func queryToStdout2(query string) {
 	if err != nil {
 		log.Fatalln(err) // TODO - process that / retry?
 	}
-
 	var requestBeginning bytes.Buffer
 	tee := io.TeeReader(conn, &requestBeginning)
 	reader := bufio.NewReader(tee)
 	for {
-		msg, err := reader.ReadString('\n')
-		if err == io.EOF {
+		msg, err2 := reader.ReadString('\n')
+		if err2 == io.EOF {
 			break
 			// Ups... We have EOF before HTTP headers finished...
 			// TODO - process that / retry?
 		}
-		if err != nil {
-			log.Fatalln(err) // TODO - process that / retry?
+		if err2 != nil {
+			log.Fatalln(err2) // TODO - process that / retry?
 		}
 		message := strings.TrimSpace(msg)
 		if message == "" {
@@ -430,9 +433,9 @@ func queryToStdout2(query string) {
 
 			progressDataJSON := strings.TrimSpace(message[22:])
 			var pd ProgressData
-			err := json.Unmarshal([]byte(progressDataJSON), &pd)
-			if err != nil {
-				log.Fatal(err)
+			err3 := json.Unmarshal([]byte(progressDataJSON), &pd)
+			if err3 != nil {
+				log.Fatal(err3)
 			}
 
 			writeProgres(stdErrBuffered, pd.ReadRows, pd.ReadBytes, pd.TotalRows, uint64(time.Since(start)))

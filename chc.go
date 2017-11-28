@@ -25,14 +25,20 @@ package main
 
 import (
 	"fmt"
-	"github.com/jessevdk/go-flags"
-	"github.com/mattn/go-isatty"
 	"os"
 	"strings"
+
+	"github.com/jessevdk/go-flags"
+	"github.com/mattn/go-isatty"
 	// "io/ioutil"
 	"log"
 	//"math"
 	//	"net/url"
+)
+
+const (
+	formatTabSeparated = "TabSeparated"
+	formatVertical     = "Vertical"
 )
 
 var opts struct {
@@ -58,7 +64,7 @@ var opts struct {
 
 var clickhouseSetting = make(map[string]string)
 
-const versionString = "v0.1.0"
+const versionString = "v0.1.1"
 
 func parseArgs() {
 	argsParser := flags.NewNamedParser("chc (ClickHouse CLI portable)", flags.Default&^flags.HelpFlag) // , HelpFlag
@@ -82,7 +88,7 @@ func parseArgs() {
 	}
 
 	if opts.Vertical && len(opts.Format) == 0 {
-		opts.Format = "Vertical"
+		opts.Format = formatVertical
 	}
 
 	// if !opts.Multiline {
@@ -100,12 +106,12 @@ func parseArgs() {
 		}
 	case "http":
 	default:
-		chcOutput.printServiceMsg("Protocol " + opts.Protocol + " is not supported.")
+		chcOutput.printServiceMsg("Protocol " + opts.Protocol + " is not supported.\n")
 		os.Exit(1)
 	}
 
 	if len(args) > 0 {
-		chcOutput.printServiceMsg("Following arguments were ignored:" + strings.Join(args, " "))
+		chcOutput.printServiceMsg("Following arguments were ignored:" + strings.Join(args, " ") + "\n")
 	}
 }
 
@@ -140,7 +146,7 @@ func main() {
 		fmt.Println("Bye")
 	} else {
 		if opts.Format == "" {
-			opts.Format = "TabSeparated"
+			opts.Format = formatTabSeparated
 		}
 
 		fireQuery(opts.Query, opts.Format, false)

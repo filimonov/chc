@@ -1,7 +1,7 @@
 package main
 
 import (
-	"encoding/csv"
+	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -53,13 +53,42 @@ func prepareRequest(query, format string, extraSettings map[string]string) (req 
 	return prepareRequestReader(strings.NewReader(query), format, extraSettings)
 }
 
+func readTabSeparated(rd io.Reader) ([][]string, error) {
+	res := [][]string{}
+	bufferedReader := bufio.NewReader(rd)
+	for {
+		line, err := bufferedReader.ReadString('\n')
+		switch err {
+		case nil:
+			fields := strings.Split(line, "\n")
+			for idx, v := range fields {
+				// \b, \f, \r, \n, \t, \0, \', and \\
+				v = strings.Replace(v, "\\b", "\b", -1)
+				v = strings.Replace(v, "\\f", "\f", -1)
+				v = strings.Replace(v, "\\r", "\r", -1)
+				v = strings.Replace(v, "\\n", "\n", -1)
+				v = strings.Replace(v, "\\t", "\t", -1)
+				v = strings.Replace(v, "\\0", "\x00", -1)
+				v = strings.Replace(v, "\\'", "'", -1)
+				v = strings.Replace(v, "\\\\", "\\", -1)
+				fields[idx] = v
+			}
+			res = append(res, fields)
+		case io.EOF:
+			return res, nil
+		default:
+			return res, err
+		}
+	}
+}
+
 // TODO: context with timeout
 func serviceRequestWithExtraSetting(query string, extraSettings map[string]string) (data [][]string, err error) {
 
 	timeout := time.Duration(3 * time.Second)
-	cx, _ := context.WithTimeout(context.Background(), timeout)
-
-	req, err0 := prepareRequest(query, "TSV", extraSettings)
+	cx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	req, err0 := prepareRequest(query, formatTabSeparated, extraSettings)
 
 	if err0 != nil {
 		err = err0
@@ -86,9 +115,7 @@ func serviceRequestWithExtraSetting(query string, extraSettings map[string]strin
 		return
 	}
 
-	tsvReader := csv.NewReader(response.Body)
-	tsvReader.Comma = '\t'
-	data, err = tsvReader.ReadAll()
+	data, err = readTabSeparated(response.Body)
 	return
 }
 

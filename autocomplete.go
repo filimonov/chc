@@ -157,7 +157,7 @@ func initAutocomlete() {
 		"PrettySpace",
 		"PrettySpaceNoEscapes",
 		"RowBinary",
-		"TabSeparated",
+		formatTabSeparated,
 		"TabSeparatedRaw",
 		"TabSeparatedWithNames",
 		"TabSeparatedWithNamesAndTypes",
@@ -167,7 +167,7 @@ func initAutocomlete() {
 		"TSVWithNames",
 		"TSVWithNamesAndTypes",
 		"Values",
-		"Vertical",
+		formatVertical,
 		"VerticalRaw",
 		"XML",
 
@@ -200,19 +200,19 @@ func initAutocomlete() {
 	 UNION ALL
 	 SELECT DISTINCT name FROM (
 		SELECT name FROM system.functions
-		UNION ALL 
+		UNION ALL
 		SELECT concat(name,'If') FROM system.functions WHERE is_aggregate=1
-		UNION ALL 
+		UNION ALL
 		SELECT concat(name,'Array') FROM system.functions WHERE is_aggregate=1
-		UNION ALL 
+		UNION ALL
 		SELECT concat(name,'Merge') FROM system.functions WHERE is_aggregate=1
-		UNION ALL 
+		UNION ALL
 		SELECT concat(name,'State') FROM system.functions WHERE is_aggregate=1
-		UNION ALL 
+		UNION ALL
 		SELECT concat(name,'MergeState') FROM system.functions WHERE is_aggregate=1
 		UNION ALL
 		SELECT name FROM system.tables
-		UNION ALL 
+		UNION ALL
 		SELECT name FROM system.columns
 		UNION ALL
 		SELECT name FROM system.databases
