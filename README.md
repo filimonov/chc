@@ -3,8 +3,15 @@
 # chc
 chc: ClickHouse portable command line client. 
 
-Download [release](https://github.com/filimonov/chc/releases) for your platform (Linux, MacOS and Windows).
-Or build your own for any of [golang supported platforms](https://golang.org/doc/install/source#environment) just as simple as `go install github.com/filimonov/chc`
+## Install 
+1. Download [release](https://github.com/filimonov/chc/releases) for your platform.
+1. Unpack
+1. Try `chc --help`
+
+## Build
+1. Install go 1.9 (or newer): https://golang.org/doc/install 
+1. `go get -u github.com/filimonov/chc`
+1. cd $GOPATH/src/github.com/filimonov/chc && go build
 
 ## Features:
 * Progressbar from native client ported
@@ -24,4 +31,3 @@ Working via http interface have a certain limitations.
 Progress info - there is an option to turn on send_progress_in_http_headers, but in that case it start sending data only then all the data is ready. For command line interface that caching is not always nice (example: when you run "select * from numbers" and hit Ctrl+C after a while - with send_progress_in_http_headers you get nothing in the output). So instead of send_progress_in_http_headers chc sends a lot of requests "SELECT ... FROM system.processes where query_id = ..." in background to get query execution progress. Those small queries will create some extra load, and if you use [quotas](https://clickhouse.yandex/docs/en/operations/quotas.html) for queries count then  that quota can be exceeded because of thouse backgroud selects. 
 
 Currently there are no option to get query stats after execution. That data can be extracted from query_log but it will make a delay (by default up to 7.5 seconds). So for now only some client-estimated stats are printed after request.
-
