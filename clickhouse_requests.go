@@ -221,7 +221,7 @@ func fireQuery(sqlToExequte, format string, interactive bool) {
 		}
 	}()
 
-	chcOutput.setupOutput()
+	chcOutput.setupOutput(cancel)
 	res := queryToStdout(cx, sqlToExequte, format, interactive)
 	chcOutput.releaseOutput()
 	if res == 200 {
