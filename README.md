@@ -1,15 +1,17 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/filimonov/chc)](https://goreportcard.com/report/github.com/filimonov/chc)
 
 # chc
-chc: ClickHouse portable command line client. 
+chc: ClickHouse portable command line client.
+
+Just works on Windows / MacOS / Linux / other [golang supported platforms](https://golang.org/doc/install/source#environment).
 
 ## Install 
-1. Download [release](https://github.com/filimonov/chc/releases) for your platform.
+1. Download latest [release](https://github.com/filimonov/chc/releases) for your platform.
 1. Unpack
 1. Try `chc --help`
 
 ## Build
-1. Install go 1.9 (or newer): https://golang.org/doc/install 
+1. Install go 1.8 (or newer): https://golang.org/doc/install 
 1. `go get -u github.com/filimonov/chc`
 1. cd $GOPATH/src/github.com/filimonov/chc && go build
 
@@ -19,6 +21,7 @@ chc: ClickHouse portable command line client.
 * Autocompletion for SQL syntax, table names, column names, dictionaries.
 * Pager support 
 * Sessions support
+* Reacts on Ctrl+C without delays (native client sometimes have problems with that)
 
 Currently it works via http interface. Should also work via https (untested).
 
