@@ -58,6 +58,7 @@ func readTabSeparated(rd io.Reader) ([][]string, error) {
 	bufferedReader := bufio.NewReader(rd)
 	for {
 		line, err := bufferedReader.ReadString('\n')
+		line = strings.TrimRight(line, "\n")
 		switch err {
 		case nil:
 			fields := strings.Split(line, "\t")

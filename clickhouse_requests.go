@@ -243,6 +243,22 @@ func fireQuery(sqlToExequte, format string, interactive bool) {
 	queryFinished <- true
 }
 
+const (
+	dataPacket = iota
+	errPacket = iota
+	donePacket = iota
+	statusPacket = iota
+	progressPacket = iota
+)
+
+type queryExecution struct {
+	Err error
+	Data string
+	Progress progressInfo
+	StatusCode int
+	PacketType int
+}
+
 func queryToStdout(cx context.Context, query, format string, interactive bool) int {
 
 	queryID := uuid.NewV4().String()
@@ -250,11 +266,7 @@ func queryToStdout(cx context.Context, query, format string, interactive bool) i
 	var count int64      // = 0
 	status := -1
 
-	errorChannel := make(chan error)
-	dataChannel := make(chan string)
-	doneChannel := make(chan bool)
-	statusCodeChannel := make(chan int)
-	progressChannel := make(chan progressInfo)
+	queryExecutionChannel := make(chan queryExecution,2048)
 
 	initProgress()
 
@@ -273,7 +285,8 @@ func queryToStdout(cx context.Context, query, format string, interactive bool) i
 				case <-ticker.C:
 					pi, err := getProgressInfo(queryID)
 					if err == nil {
-						progressChannel <- pi
+						qe := queryExecution{ Progress: pi, PacketType: progressPacket }
+						queryExecutionChannel <- qe
 					}
 				case <-finishTickerChannel:
 					break Loop3
@@ -300,8 +313,8 @@ func queryToStdout(cx context.Context, query, format string, interactive bool) i
 			req, err = prepareRequestReader(os.Stdin, format, extraSettings)
 		}
 		if err != nil {
-			errorChannel <- err
-			return
+			qe := queryExecution{ Err: err, PacketType: errPacket }
+			queryExecutionChannel <- qe
 		}
 		req = req.WithContext(cx)
 
@@ -311,11 +324,12 @@ func queryToStdout(cx context.Context, query, format string, interactive bool) i
 			// Already timedout
 		default:
 			if err != nil {
-				errorChannel <- err
+				qe := queryExecution{ Err: err, PacketType: errPacket }
+				queryExecutionChannel <- qe
 			} else {
 				defer response.Body.Close()
-
-				statusCodeChannel <- response.StatusCode
+				qe := queryExecution{ StatusCode: response.StatusCode, PacketType: statusPacket }
+				queryExecutionChannel <- qe
 				reader := bufio.NewReader(response.Body)
 			Loop:
 				for {
@@ -328,12 +342,15 @@ func queryToStdout(cx context.Context, query, format string, interactive bool) i
 						//spew.Dump(err)
 						//spew.Dump(msg)
 						if err == io.EOF {
-							doneChannel <- true
+							qe := queryExecution{ PacketType: donePacket }
+							queryExecutionChannel <- qe
 							break Loop
 						} else if err == nil {
-							dataChannel <- msg
+							qe := queryExecution{ PacketType: dataPacket, Data: msg }
+							queryExecutionChannel <- qe
 						} else {
-							errorChannel <- err
+							qe := queryExecution{ PacketType: errPacket, Err: err }
+							queryExecutionChannel <- qe
 							break Loop
 						}
 					}
@@ -346,8 +363,32 @@ func queryToStdout(cx context.Context, query, format string, interactive bool) i
 Loop2:
 	for {
 		select {
-		case st := <-statusCodeChannel:
-			status = st
+		case qe := <-queryExecutionChannel:
+			switch qe.PacketType {
+			case dataPacket:
+				data := qe.Data
+				clearProgress(chcOutput.StdErr)
+				countRows(data, format, &counterState, &count)
+				io.WriteString(chcOutput.StdOut, data)
+			case errPacket:
+				log.Fatalln(qe.Err)
+			case donePacket:
+				finishTickerChannel <- true // we use buffered channel here to avoid deadlocks
+				clearProgress(chcOutput.StdErr)
+				if opts.Time {
+					if status == 200 {
+						chcOutput.printServiceMsg(fmt.Sprintf("\n%v rows in set. Elapsed: %v\n\n", count, time.Since(start)))
+					} else {
+						chcOutput.printServiceMsg(fmt.Sprintf("\nElapsed: %v\n\n", time.Since(start)))
+					}
+				}
+				break Loop2
+			case statusPacket:
+				status = qe.StatusCode
+			case progressPacket:
+				pi := qe.Progress
+				writeProgres(chcOutput.StdErr, pi.ReadRows, pi.ReadBytes, pi.TotalRowsApprox, uint64(pi.Elapsed*1000000000))
+			}
 		case <-cx.Done():
 			finishTickerChannel <- true // aware deadlocks here, we uses buffered channel here
 			clearProgress(chcOutput.StdErr)
@@ -358,25 +399,6 @@ Loop2:
 				chcOutput.printServiceMsg("failure!\n\n")
 			}
 			break Loop2
-		case err := <-errorChannel:
-			log.Fatalln(err)
-		case pi := <-progressChannel:
-			writeProgres(chcOutput.StdErr, pi.ReadRows, pi.ReadBytes, pi.TotalRowsApprox, uint64(pi.Elapsed*1000000000))
-		case <-doneChannel:
-			finishTickerChannel <- true // we use buffered channel here to avoid deadlocks
-			clearProgress(chcOutput.StdErr)
-			if opts.Time {
-				if status == 200 {
-					chcOutput.printServiceMsg(fmt.Sprintf("\n%v rows in set. Elapsed: %v\n\n", count, time.Since(start)))
-				} else {
-					chcOutput.printServiceMsg(fmt.Sprintf("\nElapsed: %v\n\n", time.Since(start)))
-				}
-			}
-			break Loop2
-		case data := <-dataChannel:
-			clearProgress(chcOutput.StdErr)
-			countRows(data, format, &counterState, &count)
-			io.WriteString(chcOutput.StdOut, data)
 		}
 	}
 	return status
