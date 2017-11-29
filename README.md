@@ -35,4 +35,4 @@ Working via http interface have a certain limitations.
 
 *Query statistics*: Currently there are no option to get query stats after execution. That data can be extracted from query_log but it will make a delay (by default up to 7.5 seconds). So for now only some client-estimated stats are printed after request.
 
-*Echo of formatted and parsed query*: Currently there is no any option to get formatted query from the server, the only option is to parse it on the client. 
+*Echo of formatted and parsed query*: Currently there is no any option to get formatted query from the server. 
