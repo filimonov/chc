@@ -140,7 +140,7 @@ func main() {
 		}
 
 		promptLoop()
-		fmt.Println("Bye")
+		fmt.Println("Bye.")
 	} else {
 		if opts.Format == "" {
 			opts.Format = formatTabSeparated
