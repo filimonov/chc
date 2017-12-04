@@ -2,10 +2,11 @@ package main
 
 import (
 	"fmt"
-	"github.com/chzyer/readline" // only console width used from there...
 	"io"
 	"math"
 	"strings"
+
+	"github.com/chzyer/readline" // only console width used from there...
 )
 
 /// http://en.wikipedia.org/wiki/ANSI_escape_code

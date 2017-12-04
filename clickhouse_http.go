@@ -3,20 +3,18 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"net"
-	"os"
-	"time"
-	// "log"
-	//	"net"
-	"context"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
+	"time"
 )
 
 func getHost() string {

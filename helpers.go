@@ -3,8 +3,8 @@ package main
 import (
 	"bufio"
 	"io"
-	"strings"
 	"strconv"
+	"strings"
 )
 
 func readTabSeparated(rd io.Reader) ([][]string, error) {

@@ -4,11 +4,12 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"github.com/mattn/go-colorable" // make colors work on windows
 	"io"
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/mattn/go-colorable" // make colors work on windows
 )
 
 // TODO: errors
@@ -73,9 +74,8 @@ func (output *outputStruct) setOutfile(filename string) {
 		}
 
 	}
-	output.printServiceMsg("File "+filename + " already exists or not writable. ") // TODO
+	output.printServiceMsg("File " + filename + " already exists or not writable. ") // TODO
 	output.printServiceMsg("Will use STDOUT\n\n")
-
 
 }
 
@@ -87,7 +87,7 @@ func (output *outputStruct) reset() {
 	output.pagerParams = []string{}
 }
 
-func (output *outputStruct) setupOutput(cancel context.CancelFunc ) {
+func (output *outputStruct) setupOutput(cancel context.CancelFunc) {
 	switch output.outputMode {
 	case omStd:
 		output.StdOut = output.colorableStdOut
@@ -107,7 +107,7 @@ func (output *outputStruct) setupOutput(cancel context.CancelFunc ) {
 			defer cancel()
 			err := cmd.Run()
 			if err != nil {
-				output.printServiceMsg( fmt.Sprintf("Unable to start PAGER: %s\nPager disabled, STDOUT will be used", err))
+				output.printServiceMsg(fmt.Sprintf("Unable to start PAGER: %s\nPager disabled, STDOUT will be used", err))
 				output.reset()
 			}
 		}()

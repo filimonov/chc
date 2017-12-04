@@ -4,23 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	//	"github.com/davecgh/go-spew/spew"
 	"io"
+	"log"
+	"os"
 	"os/signal"
 	"regexp"
-
-	"github.com/davecgh/go-spew/spew"
-	"github.com/satori/go.uuid" // generate sessionID and queryID
-	// "io/ioutil"
-	"log"
-	//"math"
-
-	"os"
-	//	"net/url"
-
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/davecgh/go-spew/spew"
+	"github.com/satori/go.uuid" // generate sessionID and queryID
 )
 
 var sessionID = uuid.NewV4().String()
@@ -95,8 +89,8 @@ func getQueryStats(queryID string) (qs queryStats, err error) {
 		return
 	}
 
-	duration_ms, _ := strconv.ParseUint(data[0][0], 10, 64)
-	qs.QueryDuration = time.Duration(duration_ms) * time.Millisecond
+	durationMs, _ := strconv.ParseUint(data[0][0], 10, 64)
+	qs.QueryDuration = time.Duration(durationMs) * time.Millisecond
 	qs.ReadRows, _ = strconv.ParseUint(data[0][1], 10, 64)
 	qs.ReadBytes, _ = strconv.ParseUint(data[0][2], 10, 64)
 	qs.WrittenRows, _ = strconv.ParseUint(data[0][3], 10, 64)

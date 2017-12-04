@@ -1,12 +1,12 @@
 package main
 
 import (
-	"github.com/peterh/liner" // there is also github.com/chzyer/readline and https://github.com/Bowery/prompt
-	//"log"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/peterh/liner" // there is also github.com/chzyer/readline and https://github.com/Bowery/prompt
 )
 
 var prompt = ":) "

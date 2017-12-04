@@ -25,15 +25,12 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"strings"
 
 	"github.com/jessevdk/go-flags"
 	"github.com/mattn/go-isatty"
-	// "io/ioutil"
-	"log"
-	//"math"
-	//	"net/url"
 )
 
 const (
