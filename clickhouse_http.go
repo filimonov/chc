@@ -2,9 +2,13 @@ package main
 
 import (
 	"bufio"
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net"
+	"os"
 	"time"
 	// "log"
 	//	"net"
@@ -51,36 +55,6 @@ func prepareRequestReader(query io.Reader, format string, extraSettings map[stri
 
 func prepareRequest(query, format string, extraSettings map[string]string) (req *http.Request, err error) {
 	return prepareRequestReader(strings.NewReader(query), format, extraSettings)
-}
-
-func readTabSeparated(rd io.Reader) ([][]string, error) {
-	res := [][]string{}
-	bufferedReader := bufio.NewReader(rd)
-	for {
-		line, err := bufferedReader.ReadString('\n')
-		line = strings.TrimRight(line, "\n")
-		switch err {
-		case nil:
-			fields := strings.Split(line, "\t")
-			for idx, v := range fields {
-				// \b, \f, \r, \n, \t, \0, \', and \\
-				v = strings.Replace(v, "\\b", "\b", -1)
-				v = strings.Replace(v, "\\f", "\f", -1)
-				v = strings.Replace(v, "\\r", "\r", -1)
-				v = strings.Replace(v, "\\n", "\n", -1)
-				v = strings.Replace(v, "\\t", "\t", -1)
-				v = strings.Replace(v, "\\0", "\x00", -1)
-				v = strings.Replace(v, "\\'", "'", -1)
-				v = strings.Replace(v, "\\\\", "\\", -1)
-				fields[idx] = v
-			}
-			res = append(res, fields)
-		case io.EOF:
-			return res, nil
-		default:
-			return res, err
-		}
-	}
 }
 
 // TODO: context with timeout
@@ -135,4 +109,222 @@ func killQuery(queryID string) bool {
 	}
 
 	return true
+}
+
+type queryExecutionChan chan queryExecution
+
+func makeQuery(cx context.Context, query, queryID, format string, interactive bool) queryExecutionChan {
+
+	queryExecutionChannel := make(chan queryExecution, 2048)
+	finishTickerChannel := make(chan bool, 3)
+
+	if opts.Progress {
+
+		go func() {
+
+			ticker := time.NewTicker(time.Millisecond * 125)
+
+		Loop3:
+			for {
+				select {
+				case <-ticker.C:
+					pi, err := getProgressInfo(queryID)
+					if err == nil {
+						qe := queryExecution{Progress: pi, PacketType: progressPacket}
+						queryExecutionChannel <- qe
+					}
+				case <-finishTickerChannel:
+					break Loop3
+				}
+			}
+			ticker.Stop()
+			// println("ticker funct finished")
+		}()
+	}
+
+	go func() {
+		start := time.Now()
+		var count uint64 // = 0
+		countRows := getRowsCounter(format)
+		extraSettings := map[string]string{"log_queries": "1", "query_id": queryID, "session_id": sessionID}
+		defer func() { finishTickerChannel <- true }()
+		var req *http.Request
+		var err error
+		if interactive || !hasDataInStdin() {
+			req, err = prepareRequest(query, format, extraSettings)
+		} else {
+			if len(query) > 0 {
+				extraSettings["query"] = query
+			}
+			req, err = prepareRequestReader(os.Stdin, format, extraSettings)
+		}
+		if err != nil {
+			qe := queryExecution{Err: err, PacketType: errPacket}
+			queryExecutionChannel <- qe
+			return
+		}
+		req = req.WithContext(cx)
+
+		response, err := http.DefaultClient.Do(req)
+		select {
+		case <-cx.Done():
+			// Already timedout
+		default:
+			if err != nil {
+				qe := queryExecution{Err: err, PacketType: errPacket}
+				queryExecutionChannel <- qe
+			} else {
+				defer response.Body.Close()
+				qe := queryExecution{StatusCode: response.StatusCode, PacketType: statusPacket}
+				queryExecutionChannel <- qe
+				bodyReader := bufio.NewReader(response.Body)
+			Loop:
+				for {
+					//						io.WriteString(stdErr, "Debug P__\n\n" );
+					select {
+					case <-cx.Done():
+						break Loop
+					default:
+						msg, err := bodyReader.ReadString('\n')
+						count = countRows(msg)
+						//spew.Dump(err)
+						//spew.Dump(msg)
+						if err == io.EOF {
+							stats := queryStats{QueryDuration: time.Since(start), ResultRows: count}
+							qe := queryExecution{PacketType: donePacket, Stats: stats}
+							queryExecutionChannel <- qe
+							break Loop
+						} else if err == nil {
+							qe := queryExecution{PacketType: dataPacket, Data: msg}
+							queryExecutionChannel <- qe
+						} else {
+							qe := queryExecution{PacketType: errPacket, Err: err}
+							queryExecutionChannel <- qe
+							break Loop
+						}
+					}
+				}
+			}
+
+		}
+		//     println("do funct finished")
+	}()
+	return queryExecutionChannel
+
+}
+
+// another options - with progress in heeaders
+func makeQuery2(cx context.Context, query, queryID, format string, interactive bool) queryExecutionChan {
+
+	queryExecutionChannel := make(chan queryExecution, 2048)
+
+	go func() {
+		start := time.Now()
+		var count uint64 // = 0
+		countRows := getRowsCounter(format)
+
+		extraSettings := map[string]string{"send_progress_in_http_headers": "1"}
+
+		req, err := prepareRequest(query, opts.Format, extraSettings)
+		if err != nil {
+			qe := queryExecution{Err: err, PacketType: errPacket}
+			queryExecutionChannel <- qe
+			return
+		}
+
+		// connect to this socket
+		conn, err := net.Dial("tcp", getHost())
+		if err != nil {
+			qe := queryExecution{Err: err, PacketType: errPacket}
+			queryExecutionChannel <- qe
+			return
+		}
+
+		err = req.Write(conn)
+		if err != nil {
+			qe := queryExecution{Err: err, PacketType: errPacket}
+			queryExecutionChannel <- qe
+			return
+		}
+
+		var requestBeginning bytes.Buffer
+		tee := io.TeeReader(conn, &requestBeginning)
+		reader := bufio.NewReader(tee)
+
+	HeadersReadLoop:
+		for {
+			select {
+			case <-cx.Done():
+				return // Already timedout
+			default:
+				msg, err2 := reader.ReadString('\n')
+				if err2 != nil {
+					qe := queryExecution{Err: err2, PacketType: errPacket}
+					queryExecutionChannel <- qe
+					return
+					// Ups... We have error/EOF before HTTP headers finished...
+				}
+				message := strings.TrimSpace(msg)
+				if message == "" {
+					break HeadersReadLoop // header finished
+				}
+				//	fmt.Print(message)
+				if strings.HasPrefix(message, "X-ClickHouse-Progress:") {
+					type ProgressData struct {
+						ReadRows  uint64 `json:"read_rows,string"`
+						ReadBytes uint64 `json:"read_bytes,string"`
+						TotalRows uint64 `json:"total_rows,string"`
+					}
+					progressDataJSON := strings.TrimSpace(message[22:])
+					var pd ProgressData
+					err3 := json.Unmarshal([]byte(progressDataJSON), &pd)
+					if err3 == nil { // just ignore error here
+						pi := progressInfo{ReadRows: pd.ReadRows, Elapsed: float64(time.Since(start) / time.Second), ReadBytes: pd.ReadBytes, TotalRowsApprox: pd.TotalRows}
+						qe := queryExecution{Progress: pi, PacketType: progressPacket}
+						queryExecutionChannel <- qe
+					}
+				}
+			}
+		}
+
+		reader2 := io.MultiReader(&requestBeginning, conn)
+		reader3 := bufio.NewReader(reader2)
+		res, err := http.ReadResponse(reader3, req)
+		if err != nil {
+			qe := queryExecution{Err: err, PacketType: errPacket}
+			queryExecutionChannel <- qe
+			return
+		}
+		qe := queryExecution{StatusCode: res.StatusCode, PacketType: statusPacket}
+		queryExecutionChannel <- qe
+		defer res.Body.Close()
+		bodyReader := bufio.NewReader(res.Body)
+
+	Loop:
+		for {
+			select {
+			case <-cx.Done():
+				return // Already timedout
+			default:
+				msg, err := bodyReader.ReadString('\n')
+				count = countRows(msg)
+				//spew.Dump(err)
+				//spew.Dump(msg)
+				if err == io.EOF {
+					stats := queryStats{QueryDuration: time.Since(start), ResultRows: count}
+					qe := queryExecution{PacketType: donePacket, Stats: stats}
+					queryExecutionChannel <- qe
+					break Loop
+				} else if err == nil {
+					qe := queryExecution{PacketType: dataPacket, Data: msg}
+					queryExecutionChannel <- qe
+				} else {
+					qe := queryExecution{PacketType: errPacket, Err: err}
+					queryExecutionChannel <- qe
+					break Loop
+				}
+			}
+		}
+	}()
+	return queryExecutionChannel
 }

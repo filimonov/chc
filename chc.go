@@ -64,7 +64,7 @@ var opts struct {
 
 var clickhouseSetting = make(map[string]string)
 
-const versionString = "v0.1.3"
+const versionString = "v0.1.4"
 
 func parseArgs() {
 	argsParser := flags.NewNamedParser("chc (ClickHouse CLI portable)", flags.Default&^flags.HelpFlag) // , HelpFlag
