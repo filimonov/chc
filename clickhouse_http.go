@@ -232,8 +232,8 @@ func makeQuery2(cx context.Context, query, queryID, format string, interactive b
 			return
 		}
 
-		// connect to this socket
-		conn, err := net.Dial("tcp", getHost())
+		conn, err := net.Dial("tcp", getHost()) // todo: ssl
+		defer conn.Close()                      // todo: keepalive
 		if err != nil {
 			qe := queryExecution{Err: err, PacketType: errPacket}
 			queryExecutionChannel <- qe
