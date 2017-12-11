@@ -55,7 +55,6 @@ func prepareRequest(query, format string, extraSettings map[string]string) (req 
 	return prepareRequestReader(strings.NewReader(query), format, extraSettings)
 }
 
-// TODO: context with timeout
 func serviceRequestWithExtraSetting(query string, extraSettings map[string]string) (data [][]string, err error) {
 
 	timeout := time.Duration(3 * time.Second)
@@ -97,6 +96,7 @@ func serviceRequest(query string) (data [][]string, err error) {
 	return serviceRequestWithExtraSetting(query, extraSettings)
 }
 
+// TODO: ensure if it was really killed
 func killQuery(queryID string) bool {
 	query := fmt.Sprintf("SELECT 'query_id %s killed by replace'", queryID)
 	extraSettings := map[string]string{"log_queries": "0", "replace_running_query": "1", "query_id": queryID}
