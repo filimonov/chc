@@ -22,6 +22,7 @@ Just works on Windows / MacOS / Linux / other [golang supported platforms](https
 * Pager support
 * Sessions support
 * Reacts on Ctrl+C without delays (native client sometimes have problems with that)
+* Support INTO OUTFILE selects
 
 Currently it works via http interface. Should also work via https (untested).
 
