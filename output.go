@@ -23,6 +23,7 @@ const ( // iota is reset to 0
 // do we need to make it thread-safe?
 type outputStruct struct {
 	outputMode uint
+	prevMode   uint
 
 	StdOut io.Writer
 	StdErr io.Writer
@@ -57,26 +58,20 @@ func (output *outputStruct) printServiceMsg(str string) {
 }
 
 func (output *outputStruct) setPager(cmd string) {
-	parts := strings.Split(cmd, " ")
 	output.outputMode = omPager
+	parts := strings.Split(cmd, " ")
 	output.pagerExecutable, output.pagerParams = parts[0], parts[1:]
 }
 
 func (output *outputStruct) setOutfile(filename string) {
-	_, err := os.Stat(filename)
-	if os.IsNotExist(err) {
-		output.fileHandle, err = os.Create(filename)
-		if err == nil {
-			output.fileName = filename
-			output.outputMode = omFile
-			output.fileBufferedWriter = bufio.NewWriter(output.fileHandle)
-			return
-		}
+	output.prevMode = output.outputMode
+	output.fileName = filename
+	output.outputMode = omFile
+}
 
-	}
-	output.printServiceMsg("File " + filename + " already exists or not writable. ") // TODO
-	output.printServiceMsg("Will use STDOUT\n\n")
-
+func (output *outputStruct) resetOutfile() {
+	output.outputMode = output.prevMode
+	output.fileName = ""
 }
 
 func (output *outputStruct) reset() {
@@ -87,33 +82,54 @@ func (output *outputStruct) reset() {
 	output.pagerParams = []string{}
 }
 
-func (output *outputStruct) setupOutput(cancel context.CancelFunc) {
+func (output *outputStruct) startOutput() {
 	switch output.outputMode {
 	case omStd:
 		output.StdOut = output.colorableStdOut
 	case omPager:
-		cmd := exec.Command(output.pagerExecutable, output.pagerParams...)
-		output.pagerWriter, _ = cmd.StdinPipe()
 		output.StdOut = output.pagerWriter
+	case omFile:
+		output.StdOut = output.fileBufferedWriter
+	}
+}
+
+func (output *outputStruct) setupOutput(cancel context.CancelFunc) bool {
+	switch output.outputMode {
+	case omStd:
+	case omPager:
+		cmd := exec.Command(output.pagerExecutable, output.pagerParams...)
+		pagerWriter, err := cmd.StdinPipe()
+		if err != nil {
+			output.printServiceMsg(fmt.Sprintf("Can't make stdin pipe: %s\n", err))
+			return false
+		}
 
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 
-		// Create a blocking chan, Run the pager and unblock once it is finished
+		err = cmd.Start()
+		if err != nil {
+			output.printServiceMsg(fmt.Sprintf("PAGER error: %s\n", err))
+			return false
+		}
+		output.pagerWriter = pagerWriter
 		output.waitingPager = make(chan struct{})
-
 		go func() {
 			defer close(output.waitingPager)
 			defer cancel()
-			err := cmd.Run()
-			if err != nil {
-				output.printServiceMsg(fmt.Sprintf("Unable to start PAGER: %s\nPager disabled, STDOUT will be used", err))
-				output.reset()
-			}
+			cmd.Wait()
 		}()
 	case omFile:
-		output.StdOut = output.fileBufferedWriter
+		filehandle, err := os.OpenFile(output.fileName, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0755)
+		if err != nil {
+			output.printServiceMsg(fmt.Sprintf("Unable to %s\n", err))
+			output.resetOutfile()
+			return false
+		}
+		output.fileHandle = filehandle
+		output.fileBufferedWriter = bufio.NewWriter(filehandle)
 	}
+	return true
 }
 
 func (output *outputStruct) releaseOutput() {
@@ -130,6 +146,6 @@ func (output *outputStruct) releaseOutput() {
 	case omFile:
 		output.fileBufferedWriter.Flush()
 		output.fileHandle.Close()
-		output.reset()
+		output.resetOutfile()
 	}
 }

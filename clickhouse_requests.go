@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
+	//	"github.com/davecgh/go-spew/spew"
 	"github.com/satori/go.uuid" // generate sessionID and queryID
 )
 
@@ -127,7 +127,6 @@ func fireQuery(sqlToExequte, format string, interactive bool) {
 
 	cx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-
 	queryFinished := make(chan bool)
 	go func() {
 		for {
@@ -140,26 +139,26 @@ func fireQuery(sqlToExequte, format string, interactive bool) {
 		}
 	}()
 
-	chcOutput.setupOutput(cancel)
-	res := queryToStdout(cx, sqlToExequte, format, interactive)
-	chcOutput.releaseOutput()
-	if res == 200 {
-		useCmdMatches := useCmdRegexp.FindStringSubmatch(sqlToExequte)
-		if useCmdMatches != nil {
-			opts.Database = strings.Trim(useCmdMatches[1], "\"`")
-			chcOutput.printServiceMsg("Database changed to " + opts.Database + "\n")
-		}
-		if setCmdRegexp.MatchString(sqlToExequte) {
-			settings := sqlToExequte[4:]
-			settingsMatched := settingsRegexp.FindAllStringSubmatch(settings, -1)
-			for _, match := range settingsMatched {
-				clickhouseSetting[strings.Trim(match[1], "\"`")] = strings.Trim(match[2], "'")
+	if chcOutput.setupOutput(cancel) {
+		res := queryToStdout(cx, sqlToExequte, format, interactive)
+		if res == 200 {
+			useCmdMatches := useCmdRegexp.FindStringSubmatch(sqlToExequte)
+			if useCmdMatches != nil {
+				opts.Database = strings.Trim(useCmdMatches[1], "\"`")
+				chcOutput.printServiceMsg("Database changed to " + opts.Database + "\n")
 			}
-			spew.Dump(clickhouseSetting)
-		}
+			if setCmdRegexp.MatchString(sqlToExequte) {
+				settings := sqlToExequte[4:]
+				settingsMatched := settingsRegexp.FindAllStringSubmatch(settings, -1)
+				for _, match := range settingsMatched {
+					clickhouseSetting[strings.Trim(match[1], "\"`")] = strings.Trim(match[2], "'")
+				}
+				// spew.Dump(clickhouseSetting)
+			}
 
+		}
+		queryFinished <- true
 	}
-	queryFinished <- true
 }
 
 const (
@@ -181,6 +180,7 @@ type queryExecution struct {
 
 func queryToStdout(cx context.Context, query, format string, interactive bool) int {
 	queryID := uuid.NewV4().String()
+	defer chcOutput.releaseOutput()
 
 	status := -1
 
@@ -213,6 +213,9 @@ Loop2:
 				break Loop2
 			case statusPacket:
 				status = qe.StatusCode
+				if status == 200 {
+					chcOutput.startOutput()
+				}
 			case progressPacket:
 				pi := qe.Progress
 				writeProgres(chcOutput.StdErr, pi.ReadRows, pi.ReadBytes, pi.TotalRowsApprox, uint64(pi.Elapsed*1000000000))

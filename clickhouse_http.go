@@ -184,7 +184,11 @@ func makeQuery(cx context.Context, query, queryID, format string, interactive bo
 						break Loop
 					default:
 						msg, err := bodyReader.ReadString('\n')
-						count = countRows(msg)
+						if len(msg) > 0 {
+							count = countRows(msg)
+							qe := queryExecution{PacketType: dataPacket, Data: msg}
+							queryExecutionChannel <- qe
+						}
 						//spew.Dump(err)
 						//spew.Dump(msg)
 						if err == io.EOF {
@@ -192,10 +196,7 @@ func makeQuery(cx context.Context, query, queryID, format string, interactive bo
 							qe := queryExecution{PacketType: donePacket, Stats: stats}
 							queryExecutionChannel <- qe
 							break Loop
-						} else if err == nil {
-							qe := queryExecution{PacketType: dataPacket, Data: msg}
-							queryExecutionChannel <- qe
-						} else {
+						} else if err != nil {
 							qe := queryExecution{PacketType: errPacket, Err: err}
 							queryExecutionChannel <- qe
 							break Loop
@@ -305,18 +306,17 @@ func makeQuery2(cx context.Context, query, queryID, format string, interactive b
 				return // Already timedout
 			default:
 				msg, err := bodyReader.ReadString('\n')
-				count = countRows(msg)
-				//spew.Dump(err)
-				//spew.Dump(msg)
+				if len(msg) > 0 {
+					count = countRows(msg)
+					qe := queryExecution{PacketType: dataPacket, Data: msg}
+					queryExecutionChannel <- qe
+				}
 				if err == io.EOF {
 					stats := queryStats{QueryDuration: time.Since(start), ResultRows: count}
 					qe := queryExecution{PacketType: donePacket, Stats: stats}
 					queryExecutionChannel <- qe
 					break Loop
-				} else if err == nil {
-					qe := queryExecution{PacketType: dataPacket, Data: msg}
-					queryExecutionChannel <- qe
-				} else {
+				} else if err != nil {
 					qe := queryExecution{PacketType: errPacket, Err: err}
 					queryExecutionChannel <- qe
 					break Loop
