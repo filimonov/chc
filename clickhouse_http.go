@@ -55,9 +55,9 @@ func prepareRequest(query, format string, extraSettings map[string]string) (req 
 	return prepareRequestReader(strings.NewReader(query), format, extraSettings)
 }
 
-func serviceRequestWithExtraSetting(query string, extraSettings map[string]string) (data [][]string, err error) {
+func serviceRequestWithExtraSetting(query string, extraSettings map[string]string, timeout_sec uint) (data [][]string, err error) {
 
-	timeout := time.Duration(3 * time.Second)
+	timeout := time.Duration(time.Duration(timeout_sec) * time.Second)
 	cx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	req, err0 := prepareRequest(query, formatTabSeparated, extraSettings)
@@ -93,15 +93,15 @@ func serviceRequestWithExtraSetting(query string, extraSettings map[string]strin
 
 func serviceRequest(query string) (data [][]string, err error) {
 	extraSettings := map[string]string{"log_queries": "0"}
-	return serviceRequestWithExtraSetting(query, extraSettings)
+	return serviceRequestWithExtraSetting(query, extraSettings, 3)
 }
 
 // TODO: ensure if it was really killed
 func killQuery(queryID string) bool {
-	query := fmt.Sprintf("SELECT 'query_id %s killed by replace'", queryID)
-	extraSettings := map[string]string{"log_queries": "0", "replace_running_query": "1", "query_id": queryID}
+	query := fmt.Sprintf("KILL QUERY WHERE query_id = '%s' SYNC", queryID)
+	extraSettings := map[string]string{"log_queries": "0"}
 
-	_, err := serviceRequestWithExtraSetting(query, extraSettings)
+	_, err := serviceRequestWithExtraSetting(query, extraSettings, 900)
 	if err != nil {
 		return false
 	}
@@ -144,7 +144,7 @@ func makeQuery(cx context.Context, query, queryID, format string, interactive bo
 		start := time.Now()
 		var count uint64 // = 0
 		countRows := getRowsCounter(format)
-		extraSettings := map[string]string{"log_queries": "1", "query_id": queryID, "session_id": sessionID}
+		extraSettings := map[string]string{"log_queries": "1", "query_id": queryID, "session_id": sessionID, "session_timeout": "1800" } // 30 min
 		defer func() { finishTickerChannel <- true }()
 		var req *http.Request
 		var err error

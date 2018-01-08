@@ -17,7 +17,22 @@ import (
 	"github.com/satori/go.uuid" // generate sessionID and queryID
 )
 
-var sessionID = uuid.NewV4().String()
+func get_id() string {
+	uu,err := uuid.NewV4()
+
+	if err == nil {
+		return uu.String()
+	}
+
+	uu,err = uuid.NewV1()
+	if err == nil {
+		return uu.String()
+	}
+
+	return fmt.Sprintf( "faultyuu %v", time.Now() )
+}
+
+var sessionID = get_id()
 
 type progressInfo struct {
 	Elapsed         float64
@@ -179,7 +194,7 @@ type queryExecution struct {
 }
 
 func queryToStdout(cx context.Context, query, format string, interactive bool) int {
-	queryID := uuid.NewV4().String()
+	queryID := get_id()
 	defer chcOutput.releaseOutput()
 
 	status := -1
