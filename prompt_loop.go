@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/peterh/liner" // there is also github.com/chzyer/readline and https://github.com/Bowery/prompt
+	"github.com/filimonov/liner" // there is also github.com/chzyer/readline and https://github.com/Bowery/prompt
 )
 
 var prompt = ":) "
